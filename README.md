@@ -1,6 +1,6 @@
 # LLM Model Watch Feed
 
-![LLM Model Watch Feed hero](docs/assets/readme-hero.png)
+![LLM Model Watch Feed overview](assets/readme/overview.png)
 
 LLM Model Watch Feed は、LLM モデルに関する重要な更新だけを集めて RSS と GitHub Pages で配信する小さなウォッチサービスです。
 
@@ -156,7 +156,8 @@ https://your-username.github.io/llm-watch-feed/feeds/all.xml
 ├── docs/
 │   ├── index.html          # GitHub Pages の公開画面
 │   ├── data/models.json    # 収集済み記事データ
-│   ├── feeds/*.xml         # 公開 RSS フィード
-│   └── assets/             # README などで使う画像
+│   └── feeds/*.xml         # 公開 RSS フィード
+├── assets/readme/
+│   └── overview.png        # README 用画像
 └── README.md
 ```
