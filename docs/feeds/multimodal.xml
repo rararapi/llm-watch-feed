@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>LLM Watch Feed - Multimodal</title>
+    <link>https://your-username.github.io/llm-watch-feed</link>
+    <description>マルチモーダル・音声・動画モデルの情報</description>
+    <language>ja</language>
+    <lastBuildDate>Thu, 04 Jun 2026 06:05:27 +0000</lastBuildDate>
+    <atom:link href="https://your-username.github.io/llm-watch-feed/feeds/multimodal.xml" rel="self" type="application/rss+xml"/>
+
+  </channel>
+</rss>
