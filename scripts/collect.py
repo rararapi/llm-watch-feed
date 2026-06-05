@@ -29,20 +29,20 @@ RSS_SOURCES = [
         "url": "https://openai.com/news/rss.xml",
     },
     {
-        "name": "Anthropic",
-        "url": "https://www.anthropic.com/news/rss.xml",
-    },
-    {
         "name": "Google DeepMind",
         "url": "https://deepmind.google/blog/rss.xml",
+    },
+    {
+        "name": "Google Developers Blog",
+        "url": "https://developers.googleblog.com/feeds/posts/default/?alt=rss",
     },
     {
         "name": "Hugging Face Blog",
         "url": "https://huggingface.co/blog/feed.xml",
     },
     {
-        "name": "Hugging Face Papers",
-        "url": "https://huggingface.co/papers/rss",
+        "name": "Microsoft AI Blog",
+        "url": "https://blogs.microsoft.com/ai/feed/",
     },
 ]
 

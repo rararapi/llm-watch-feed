@@ -5,8 +5,15 @@
     <link>https://your-username.github.io/llm-watch-feed</link>
     <description>重要度Aの主要LLMモデル情報</description>
     <language>ja</language>
-    <lastBuildDate>Thu, 04 Jun 2026 06:05:27 +0000</lastBuildDate>
+    <lastBuildDate>Fri, 05 Jun 2026 03:56:10 +0000</lastBuildDate>
     <atom:link href="https://your-username.github.io/llm-watch-feed/feeds/major-models.xml" rel="self" type="application/rss+xml"/>
+    <item>
+      <title><![CDATA[[重要度A][Frontier] ChatGPT Memory System - Dreaming: Better memory for a more helpful ChatGPT]]></title>
+      <link>https://openai.com/index/chatgpt-memory-dreaming</link>
+      <guid isPermaLink="false">c3ab33c62226049804cd22dfa451a2903ecf02cb2dc79829f99c4e6cad08553d</guid>
+      <pubDate>Thu, 04 Jun 2026 09:00:00 +0000</pubDate>
+      <description><![CDATA[<strong>モデル名:</strong> ChatGPT Memory System<br/><strong>提供元:</strong> OpenAI<br/><strong>モデル種別:</strong> Frontier<br/><strong>要約:</strong> ChatGPTが新しいメモリシステムを導入し、会話の文脈をより長く保持可能に。ユーザーの好みを記憶し、より関連性の高い応答を実現。<br/><strong>影響:</strong> 長期的な会話の文脈保持が向上し、ユーザー体験とアプリの対話品質が改善される。<br/><strong>推奨アクション:</strong> 新メモリ機能のAPI対応状況を確認し、アプリへの統合を検討する。<br/><strong>ソース:</strong> OpenAI<br/><strong>重要度:</strong> A]]></description>
+    </item>
     <item>
       <title><![CDATA[[重要度A][Reasoning] GPT-Rosalind - Introducing new capabilities to GPT-Rosalind]]></title>
       <link>https://openai.com/index/introducing-new-capabilities-to-gpt-rosalind</link>

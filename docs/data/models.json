@@ -64,5 +64,28 @@
       "API"
     ],
     "language": "ja"
+  },
+  {
+    "id": "c3ab33c62226049804cd22dfa451a2903ecf02cb2dc79829f99c4e6cad08553d",
+    "title": "Dreaming: Better memory for a more helpful ChatGPT",
+    "url": "https://openai.com/index/chatgpt-memory-dreaming",
+    "source": "OpenAI",
+    "published_at": "2026-06-04T09:00:00+00:00",
+    "collected_at": "2026-06-05T03:55:57.000267+00:00",
+    "is_model_related": true,
+    "model_relevance_reason": "モデルのコンテキスト長やメモリ機能の改善に関する情報であるため",
+    "model_name": "ChatGPT Memory System",
+    "provider": "OpenAI",
+    "model_type": "Frontier",
+    "summary": "ChatGPTが新しいメモリシステムを導入し、会話の文脈をより長く保持可能に。ユーザーの好みを記憶し、より関連性の高い応答を実現。",
+    "impact": "長期的な会話の文脈保持が向上し、ユーザー体験とアプリの対話品質が改善される。",
+    "action": "新メモリ機能のAPI対応状況を確認し、アプリへの統合を検討する。",
+    "importance": "A",
+    "tags": [
+      "Frontier",
+      "API",
+      "Context Length"
+    ],
+    "language": "ja"
   }
 ]
