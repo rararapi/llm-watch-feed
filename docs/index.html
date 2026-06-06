@@ -5,303 +5,322 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LLM Model Watch Feed</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
       font-size: 14px;
-      line-height: 1.6;
-      color: #1a1a2e;
-      background: #f8f9fa;
+      line-height: 1.65;
+      color: #1f2937;
+      background: #f6f7f9;
     }
     header {
-      background: #1a1a2e;
+      background: #182033;
       color: #fff;
       padding: 24px 32px;
     }
-    header h1 { font-size: 22px; font-weight: 700; }
-    header p { margin-top: 4px; color: #9ba3b8; font-size: 13px; }
-    main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
-    section { margin-bottom: 36px; }
+    header h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+    header p {
+      margin: 6px 0 0;
+      color: #c5cedd;
+      font-size: 13px;
+    }
+    nav {
+      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    nav a, .button-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      color: #fff;
+      background: #2563eb;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    nav a.secondary {
+      background: transparent;
+      border: 1px solid #53617a;
+      color: #e5e7eb;
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+    section { margin-bottom: 34px; }
     h2 {
-      font-size: 16px;
-      font-weight: 700;
-      color: #1a1a2e;
-      border-left: 4px solid #4a90d9;
+      margin: 0 0 14px;
       padding-left: 10px;
-      margin-bottom: 14px;
+      border-left: 4px solid #2563eb;
+      color: #111827;
+      font-size: 17px;
+    }
+    p { margin: 0 0 12px; }
+    .notice {
+      background: #fff;
+      border: 1px solid #d9dee8;
+      border-radius: 6px;
+      padding: 16px;
     }
     .feed-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
     }
     .feed-card {
       background: #fff;
-      border: 1px solid #e0e0e0;
+      border: 1px solid #d9dee8;
       border-radius: 6px;
-      padding: 12px 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+      padding: 14px;
     }
-    .feed-card .feed-name { font-weight: 600; font-size: 13px; }
-    .feed-card .feed-desc { color: #666; font-size: 12px; }
+    .feed-name {
+      margin-bottom: 4px;
+      font-weight: 700;
+    }
+    .feed-desc {
+      min-height: 40px;
+      margin-bottom: 10px;
+      color: #4b5563;
+      font-size: 12px;
+    }
     .feed-url-row {
       display: flex;
       gap: 6px;
       align-items: center;
     }
-    .feed-url-row input {
-      flex: 1;
-      font-size: 11px;
-      padding: 4px 6px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      background: #f5f5f5;
-      color: #444;
-      cursor: text;
+    input {
+      width: 100%;
+      min-width: 0;
+      padding: 6px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      background: #f9fafb;
+      color: #374151;
+      font-size: 12px;
     }
-    .copy-btn {
-      font-size: 11px;
-      padding: 4px 10px;
-      background: #4a90d9;
+    button {
+      min-height: 31px;
+      padding: 5px 10px;
+      border: 0;
+      border-radius: 5px;
+      background: #2563eb;
       color: #fff;
-      border: none;
-      border-radius: 4px;
       cursor: pointer;
+      font-weight: 600;
       white-space: nowrap;
     }
-    .copy-btn:hover { background: #357abd; }
-    .copy-btn.copied { background: #27ae60; }
+    button.copied { background: #15803d; }
     table {
       width: 100%;
       border-collapse: collapse;
       background: #fff;
+      border: 1px solid #d9dee8;
       border-radius: 6px;
       overflow: hidden;
-      border: 1px solid #e0e0e0;
+    }
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #edf0f5;
+      text-align: left;
+      vertical-align: top;
+      font-size: 12px;
     }
     th {
-      background: #f0f2f5;
-      padding: 8px 10px;
-      text-align: left;
-      font-size: 12px;
-      font-weight: 600;
-      color: #555;
-      border-bottom: 1px solid #e0e0e0;
+      background: #eef2f7;
+      color: #374151;
       white-space: nowrap;
     }
-    td {
-      padding: 8px 10px;
-      font-size: 12px;
-      border-bottom: 1px solid #f0f0f0;
-      vertical-align: top;
-    }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #fafbff; }
-    td a { color: #357abd; text-decoration: none; }
-    td a:hover { text-decoration: underline; }
+    tr:last-child td { border-bottom: 0; }
+    a { color: #1d4ed8; }
     .badge {
       display: inline-block;
       padding: 1px 7px;
-      border-radius: 10px;
+      border-radius: 999px;
+      font-weight: 700;
       font-size: 11px;
-      font-weight: 600;
-      white-space: nowrap;
     }
-    .imp-A { background: #fde8e8; color: #c0392b; }
-    .imp-B { background: #fef3cd; color: #856404; }
-    .imp-C { background: #e8f4f8; color: #2980b9; }
-    .type-badge {
-      background: #e8f0fe;
-      color: #1a73e8;
+    .imp-A { background: #fee2e2; color: #991b1b; }
+    .imp-B { background: #fef3c7; color: #92400e; }
+    .imp-C { background: #dbeafe; color: #1e40af; }
+    .tag {
+      display: inline-block;
+      margin: 0 3px 3px 0;
       padding: 1px 7px;
-      border-radius: 10px;
+      border-radius: 999px;
+      background: #e8eef8;
+      color: #1f4f88;
       font-size: 11px;
     }
-    .guide-box {
+    .empty-state {
+      padding: 20px;
+      text-align: center;
+      color: #6b7280;
       background: #fff;
-      border: 1px solid #e0e0e0;
+      border: 1px solid #d9dee8;
       border-radius: 6px;
-      padding: 16px 20px;
     }
-    .guide-box ol { padding-left: 20px; }
-    .guide-box li { margin-bottom: 6px; font-size: 13px; }
-    .guide-box code {
-      background: #f0f2f5;
-      padding: 1px 5px;
-      border-radius: 3px;
-      font-size: 12px;
-      font-family: "Consolas", "Monaco", monospace;
-      word-break: break-all;
-    }
-    #status { color: #888; font-size: 12px; padding: 8px 0; }
-    .empty-state { color: #aaa; font-size: 13px; padding: 24px; text-align: center; }
-    @media (max-width: 640px) {
-      header { padding: 16px; }
-      main { padding: 16px 10px; }
-      table { font-size: 11px; }
-      th, td { padding: 6px 8px; }
+    @media (max-width: 720px) {
+      header { padding: 18px 16px; }
+      main { padding: 18px 10px 36px; }
+      .feed-url-row { align-items: stretch; }
+      table { display: block; overflow-x: auto; }
     }
   </style>
 </head>
 <body>
+  <header>
+    <h1>LLM Model Watch Feed</h1>
+    <p>LLMモデル関連ニュースをRSSとして公開し、Power AutomateからMicrosoft Teamsへ通知できる静的フィードです。</p>
+    <nav aria-label="主要リンク">
+      <a href="./power-automate.html">Power Automate連携手順書</a>
+      <a class="secondary" href="./feeds/all.xml">RSS: All</a>
+    </nav>
+  </header>
 
-<header>
-  <h1>LLM Model Watch Feed</h1>
-  <p>LLMモデル情報に特化した静的RSSフィード。AI開発者向けモデルアップデート監視サービス。</p>
-</header>
+  <main>
+    <section>
+      <h2>Power Automate連携</h2>
+      <div class="notice">
+        <p>Teams通知を設定する場合は、まず手順書を開いてください。RSSフィードURLの選び方、Power Automateのフロー作成、Teams投稿メッセージの例、テスト方法、トラブルシュートまでまとめています。</p>
+        <a class="button-link" href="./power-automate.html">詳細手順を見る</a>
+      </div>
+    </section>
 
-<main>
+    <section>
+      <h2>公開RSSフィード</h2>
+      <div class="feed-grid" id="feed-grid"></div>
+    </section>
 
-  <section>
-    <h2>RSSフィード一覧</h2>
-    <div class="feed-grid" id="feed-grid">
-      <!-- populated by JS -->
-    </div>
-  </section>
+    <section>
+      <h2>最新モデル情報</h2>
+      <p id="status">読み込み中...</p>
+      <div id="articles-wrap"></div>
+    </section>
+  </main>
 
-  <section>
-    <h2>Power Automate で Microsoft Teams に配信する手順</h2>
-    <div class="guide-box">
-      <ol>
-        <li>Power Automate を開き <strong>「新しいフロー」→「自動化クラウドフロー」</strong> を選択</li>
-        <li>トリガーとして <strong>「RSS フィードに新しいフィードアイテムが発行されたとき」</strong> を選択</li>
-        <li>RSS フィードの URL に下記いずれかを入力（例: <code id="example-url"></code>）</li>
-        <li>アクションに <strong>「Microsoft Teams — メッセージを投稿する」</strong> を追加</li>
-        <li>メッセージ本文に <code>フィードのタイトル</code> / <code>フィードのリンク</code> / <code>フィードの概要</code> などを設定</li>
-        <li>フローを保存して有効化。以降、新着モデル情報が自動でTeamsに投稿されます。</li>
-      </ol>
-    </div>
-  </section>
+  <script>
+    const FEEDS = [
+      { name: "All", file: "feeds/all.xml", desc: "重要度AまたはBのすべてのLLMモデル関連情報" },
+      { name: "Major Models", file: "feeds/major-models.xml", desc: "重要度Aの主要モデル情報" },
+      { name: "Pricing", file: "feeds/pricing.xml", desc: "価格、コスト、レート制限などに関する情報" },
+      { name: "Open Models", file: "feeds/open-models.xml", desc: "オープンウェイトモデルに関する情報" },
+      { name: "Coding", file: "feeds/coding.xml", desc: "コーディング性能やコード生成モデルに関する情報" },
+      { name: "Multimodal", file: "feeds/multimodal.xml", desc: "マルチモーダル、音声、動画モデルに関する情報" },
+    ];
 
-  <section>
-    <h2>最新モデル情報</h2>
-    <p id="status">読み込み中...</p>
-    <div id="articles-wrap"></div>
-  </section>
+    function getBaseUrl() {
+      const path = window.location.pathname;
+      const dir = path.endsWith(".html") ? path.slice(0, path.lastIndexOf("/")) : path.replace(/\/$/, "");
+      return window.location.origin + dir;
+    }
 
-</main>
+    function copyText(text, button) {
+      const done = () => {
+        button.textContent = "Copied";
+        button.classList.add("copied");
+        setTimeout(() => {
+          button.textContent = "Copy";
+          button.classList.remove("copied");
+        }, 1400);
+      };
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    }
 
-<script>
-  const FEEDS = [
-    { name: "All (重要度A+B)", file: "feeds/all.xml",          desc: "重要度AまたはBのすべてのモデル情報" },
-    { name: "Major Models",    file: "feeds/major-models.xml", desc: "重要度Aの主要モデル情報のみ" },
-    { name: "Pricing",         file: "feeds/pricing.xml",      desc: "価格・コスト関連のモデル情報" },
-    { name: "Open Models",     file: "feeds/open-models.xml",  desc: "オープンウェイトモデルの情報" },
-    { name: "Coding",          file: "feeds/coding.xml",       desc: "コーディング性能に特化したモデル情報" },
-    { name: "Multimodal",      file: "feeds/multimodal.xml",   desc: "マルチモーダル・音声・動画モデルの情報" },
-  ];
-
-  function getBaseUrl() {
-    const p = window.location.pathname;
-    const trimmed = p.endsWith(".html") || p.endsWith(".htm")
-      ? p.substring(0, p.lastIndexOf("/"))
-      : p.replace(/\/$/, "");
-    return window.location.origin + trimmed;
-  }
-
-  function copyText(text, btn) {
-    navigator.clipboard.writeText(text).then(() => {
-      btn.textContent = "Copied!";
-      btn.classList.add("copied");
-      setTimeout(() => {
-        btn.textContent = "Copy";
-        btn.classList.remove("copied");
-      }, 1500);
-    }).catch(() => {
-      // Fallback for older browsers
-      const el = document.createElement("textarea");
-      el.value = text;
-      document.body.appendChild(el);
-      el.select();
+    function fallbackCopy(text, done) {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
       document.execCommand("copy");
-      document.body.removeChild(el);
-      btn.textContent = "Copied!";
-      btn.classList.add("copied");
-      setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 1500);
-    });
-  }
-
-  function renderFeeds(base) {
-    const grid = document.getElementById("feed-grid");
-    document.getElementById("example-url").textContent = base + "/" + FEEDS[0].file;
-    grid.innerHTML = FEEDS.map(f => {
-      const url = `${base}/${f.file}`;
-      return `<div class="feed-card">
-        <div class="feed-name">${f.name}</div>
-        <div class="feed-desc">${f.desc}</div>
-        <div class="feed-url-row">
-          <input type="text" value="${url}" readonly onclick="this.select()">
-          <button class="copy-btn" onclick="copyText('${url}', this)">Copy</button>
-        </div>
-      </div>`;
-    }).join("");
-  }
-
-  function impClass(imp) {
-    return `badge imp-${imp || "C"}`;
-  }
-
-  function renderArticles(articles) {
-    const status = document.getElementById("status");
-    const wrap = document.getElementById("articles-wrap");
-
-    const visible = articles.filter(a => a.importance === "A" || a.importance === "B");
-
-    if (visible.length === 0) {
-      status.textContent = "";
-      wrap.innerHTML = '<div class="empty-state">まだモデル情報がありません。GitHub Actionsを実行してください。</div>';
-      return;
+      document.body.removeChild(textarea);
+      done();
     }
 
-    // Sort by published_at descending
-    visible.sort((a, b) => (b.published_at || "").localeCompare(a.published_at || ""));
-
-    status.textContent = `${visible.length} 件 (重要度A+B)`;
-
-    const rows = visible.map(a => {
-      const date = (a.published_at || "").substring(0, 10);
-      const tags = (a.tags || []).map(t => `<span class="type-badge">${t}</span>`).join(" ");
-      return `<tr>
-        <td><span class="${impClass(a.importance)}">${a.importance || "-"}</span></td>
-        <td><span class="type-badge">${a.model_type || "-"}</span></td>
-        <td><strong>${a.model_name || "Unknown"}</strong></td>
-        <td>${a.provider || "-"}</td>
-        <td><a href="${a.url}" target="_blank" rel="noopener">${a.title || ""}</a></td>
-        <td>${a.source || ""}</td>
-        <td>${date}</td>
-        <td>${tags}</td>
-      </tr>`;
-    }).join("");
-
-    wrap.innerHTML = `<table>
-      <thead><tr>
-        <th>重要度</th><th>種別</th><th>モデル名</th><th>提供元</th>
-        <th>記事タイトル</th><th>ソース</th><th>公開日</th><th>タグ</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-  }
-
-  async function loadArticles() {
-    const status = document.getElementById("status");
-    try {
-      const resp = await fetch("./data/models.json");
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const articles = await resp.json();
-      renderArticles(articles);
-    } catch (e) {
-      status.textContent = `読み込みエラー: ${e.message}`;
-      document.getElementById("articles-wrap").innerHTML =
-        '<div class="empty-state">GitHub Pages上でアクセスしてください（ローカルのfile://では動作しません）</div>';
+    function renderFeeds(base) {
+      const grid = document.getElementById("feed-grid");
+      grid.innerHTML = FEEDS.map((feed) => {
+        const url = `${base}/${feed.file}`;
+        return `<article class="feed-card">
+          <div class="feed-name">${feed.name}</div>
+          <div class="feed-desc">${feed.desc}</div>
+          <div class="feed-url-row">
+            <input type="text" value="${url}" readonly onclick="this.select()" aria-label="${feed.name}のRSS URL">
+            <button type="button" onclick="copyText('${url}', this)">Copy</button>
+          </div>
+        </article>`;
+      }).join("");
     }
-  }
 
-  const base = getBaseUrl();
-  renderFeeds(base);
-  loadArticles();
-</script>
+    function renderArticles(articles) {
+      const status = document.getElementById("status");
+      const wrap = document.getElementById("articles-wrap");
+      const visible = articles
+        .filter((article) => article.importance === "A" || article.importance === "B")
+        .sort((a, b) => (b.published_at || "").localeCompare(a.published_at || ""));
 
+      if (visible.length === 0) {
+        status.textContent = "";
+        wrap.innerHTML = '<div class="empty-state">まだ表示できるモデル情報がありません。GitHub Actionsを実行するとRSSと一覧が更新されます。</div>';
+        return;
+      }
+
+      status.textContent = `${visible.length}件`;
+      const rows = visible.map((article) => {
+        const date = (article.published_at || "").slice(0, 10);
+        const tags = (article.tags || []).map((tag) => `<span class="tag">${tag}</span>`).join("");
+        return `<tr>
+          <td><span class="badge imp-${article.importance || "C"}">${article.importance || "-"}</span></td>
+          <td>${article.model_type || "-"}</td>
+          <td>${article.model_name || "Unknown"}</td>
+          <td>${article.provider || "-"}</td>
+          <td><a href="${article.url}" target="_blank" rel="noopener">${article.title || ""}</a></td>
+          <td>${article.source || ""}</td>
+          <td>${date}</td>
+          <td>${tags}</td>
+        </tr>`;
+      }).join("");
+
+      wrap.innerHTML = `<table>
+        <thead>
+          <tr>
+            <th>重要度</th><th>種別</th><th>モデル名</th><th>提供元</th>
+            <th>記事タイトル</th><th>ソース</th><th>公開日</th><th>タグ</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    }
+
+    async function loadArticles() {
+      const status = document.getElementById("status");
+      try {
+        const response = await fetch("./data/models.json");
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        renderArticles(await response.json());
+      } catch (error) {
+        status.textContent = `読み込みエラー: ${error.message}`;
+        document.getElementById("articles-wrap").innerHTML =
+          '<div class="empty-state">GitHub PagesまたはローカルHTTPサーバー経由でアクセスしてください。file:// ではデータを読み込めません。</div>';
+      }
+    }
+
+    renderFeeds(getBaseUrl());
+    loadArticles();
+  </script>
 </body>
 </html>

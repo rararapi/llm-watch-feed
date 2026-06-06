@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Power Automate連携手順書 - LLM Model Watch Feed</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+      font-size: 15px;
+      line-height: 1.75;
+      color: #1f2937;
+      background: #f6f7f9;
+    }
+    header {
+      background: #182033;
+      color: #fff;
+      padding: 24px 32px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+    header p {
+      margin: 6px 0 0;
+      color: #c5cedd;
+      font-size: 13px;
+    }
+    header a {
+      color: #dbeafe;
+    }
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 24px 16px 56px;
+    }
+    section {
+      margin-bottom: 34px;
+      background: #fff;
+      border: 1px solid #d9dee8;
+      border-radius: 6px;
+      padding: 20px;
+    }
+    h2 {
+      margin: 0 0 12px;
+      padding-left: 10px;
+      border-left: 4px solid #2563eb;
+      color: #111827;
+      font-size: 18px;
+    }
+    h3 {
+      margin: 22px 0 8px;
+      color: #111827;
+      font-size: 15px;
+    }
+    p { margin: 0 0 12px; }
+    ol, ul { margin: 0 0 12px 22px; padding: 0; }
+    li { margin-bottom: 7px; }
+    a { color: #1d4ed8; }
+    code {
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: #eef2f7;
+      color: #111827;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.92em;
+      word-break: break-all;
+    }
+    pre {
+      margin: 10px 0 14px;
+      padding: 12px;
+      border-radius: 6px;
+      background: #111827;
+      color: #f9fafb;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 14px;
+      border: 1px solid #d9dee8;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #edf0f5;
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+    }
+    th {
+      background: #eef2f7;
+      color: #374151;
+      white-space: nowrap;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .toc a {
+      display: block;
+      padding: 8px 10px;
+      border: 1px solid #d9dee8;
+      border-radius: 6px;
+      background: #f9fafb;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .callout {
+      margin: 12px 0;
+      padding: 12px 14px;
+      border-left: 4px solid #2563eb;
+      background: #eff6ff;
+      border-radius: 4px;
+    }
+    .warning {
+      border-left-color: #b45309;
+      background: #fffbeb;
+    }
+    .checklist li {
+      list-style: square;
+    }
+    @media (max-width: 720px) {
+      header { padding: 18px 16px; }
+      main { padding: 18px 10px 40px; }
+      section { padding: 16px; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p><a href="./index.html">LLM Model Watch Feed</a></p>
+    <h1>Power Automate連携手順書</h1>
+    <p>GitHub Pagesで公開したRSSフィードをPower Automateで監視し、Microsoft Teamsへ通知するための詳細手順です。</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>目次</h2>
+      <div class="toc">
+        <a href="#overview">1. 全体像</a>
+        <a href="#pages">2. GitHub Pagesの公開確認</a>
+        <a href="#feed">3. RSSフィードURLの選択</a>
+        <a href="#flow">4. Power Automateフロー作成</a>
+        <a href="#message">5. Teams投稿メッセージ設定</a>
+        <a href="#test">6. テストと運用確認</a>
+        <a href="#troubleshooting">7. トラブルシュート</a>
+      </div>
+    </section>
+
+    <section id="overview">
+      <h2>1. 全体像</h2>
+      <p>このアプリは、LLMモデル関連ニュースを収集して <code>docs/feeds/*.xml</code> にRSSフィードを生成します。GitHub Pagesで <code>docs/</code> を公開すると、Power AutomateのRSSトリガーからフィードを監視できます。</p>
+      <ol>
+        <li>GitHub Actionsが定期的に記事を収集し、RSSを生成します。</li>
+        <li>GitHub Pagesが <code>docs/</code> 配下のHTMLとRSSを公開します。</li>
+        <li>Power AutomateがRSSの新着アイテムを検知します。</li>
+        <li>Microsoft Teamsの指定チャネルへメッセージを投稿します。</li>
+      </ol>
+      <div class="callout">
+        想定する公開URLは <code>https://{GitHubユーザー名}.github.io/{リポジトリ名}/</code> です。このリポジトリ名が <code>llm-watch-feed</code> の場合、RSSの例は <code>https://{GitHubユーザー名}.github.io/llm-watch-feed/feeds/all.xml</code> です。
+      </div>
+    </section>
+
+    <section id="pages">
+      <h2>2. GitHub Pagesの公開確認</h2>
+      <h3>2.1 Pagesを有効化する</h3>
+      <ol>
+        <li>GitHubでこのリポジトリを開きます。</li>
+        <li><strong>Settings</strong> を開きます。</li>
+        <li>左メニューの <strong>Pages</strong> を開きます。</li>
+        <li><strong>Build and deployment</strong> のSourceで <strong>Deploy from a branch</strong> を選択します。</li>
+        <li>Branchで <strong>main</strong>、Folderで <strong>/docs</strong> を選択します。</li>
+        <li><strong>Save</strong> を押します。</li>
+      </ol>
+
+      <h3>2.2 公開URLへアクセスする</h3>
+      <ol>
+        <li>Pages設定画面に表示される公開URLを開きます。</li>
+        <li>トップページに「Power Automate連携手順書」と「公開RSSフィード」が表示されることを確認します。</li>
+        <li><code>/feeds/all.xml</code> を開き、XMLが表示されることを確認します。</li>
+      </ol>
+
+      <div class="warning callout">
+        Power Automateには、ローカルファイルや <code>file://</code> のURLではなく、GitHub Pagesで公開された <code>https://</code> のRSS URLを登録してください。
+      </div>
+    </section>
+
+    <section id="feed">
+      <h2>3. RSSフィードURLの選択</h2>
+      <p>通知したい情報の範囲に応じて、登録するRSSフィードを選びます。最初は <code>all.xml</code> を使うと、重要度AまたはBの主要更新をまとめて確認できます。</p>
+      <table>
+        <thead>
+          <tr><th>フィード</th><th>URLパス</th><th>用途</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>All</td><td><code>/feeds/all.xml</code></td><td>重要度AまたはBのすべてのLLMモデル関連情報</td></tr>
+          <tr><td>Major Models</td><td><code>/feeds/major-models.xml</code></td><td>重要度Aの主要モデル情報だけを通知したい場合</td></tr>
+          <tr><td>Pricing</td><td><code>/feeds/pricing.xml</code></td><td>価格やコスト関連の更新を追いたい場合</td></tr>
+          <tr><td>Open Models</td><td><code>/feeds/open-models.xml</code></td><td>オープンウェイトモデル関連を追いたい場合</td></tr>
+          <tr><td>Coding</td><td><code>/feeds/coding.xml</code></td><td>コーディングモデルやコード生成性能を追いたい場合</td></tr>
+          <tr><td>Multimodal</td><td><code>/feeds/multimodal.xml</code></td><td>音声、画像、動画などのマルチモーダル更新を追いたい場合</td></tr>
+        </tbody>
+      </table>
+      <p>公開URLが <code>https://example.github.io/llm-watch-feed/</code> の場合、AllフィードのURLは次のようになります。</p>
+      <pre><code>https://example.github.io/llm-watch-feed/feeds/all.xml</code></pre>
+    </section>
+
+    <section id="flow">
+      <h2>4. Power Automateフロー作成</h2>
+      <h3>4.1 自動化クラウドフローを作成する</h3>
+      <ol>
+        <li><a href="https://make.powerautomate.com/" target="_blank" rel="noopener">Power Automate</a> を開きます。</li>
+        <li>左メニューから <strong>作成</strong> を開きます。</li>
+        <li><strong>自動化したクラウド フロー</strong> を選択します。</li>
+        <li>フロー名に <code>LLMモデル更新をTeamsへ通知</code> など、用途が分かる名前を入力します。</li>
+        <li>トリガー検索で <code>RSS</code> と入力します。</li>
+        <li><strong>フィード項目が発行されるとき</strong> を選択します。</li>
+        <li><strong>作成</strong> を押します。</li>
+      </ol>
+
+      <h3>4.2 RSSトリガーを設定する</h3>
+      <ol>
+        <li><strong>RSS フィード URL</strong> に、GitHub Pagesで公開されたRSS URLを入力します。</li>
+        <li>例: <code>https://example.github.io/llm-watch-feed/feeds/all.xml</code></li>
+        <li>保存後にフローが有効化されていることを確認します。</li>
+      </ol>
+      <div class="callout">
+        RSSアイテムの重複通知を避けるため、RSSの <code>guid</code> は記事ごとのIDまたはURLを使っています。同じ記事が再生成されても、通常は新着として扱われません。
+      </div>
+    </section>
+
+    <section id="message">
+      <h2>5. Teams投稿メッセージ設定</h2>
+      <h3>5.1 Teamsアクションを追加する</h3>
+      <ol>
+        <li>RSSトリガーの下で <strong>新しいステップ</strong> を押します。</li>
+        <li>検索欄に <code>Teams</code> と入力します。</li>
+        <li><strong>Microsoft Teams</strong> コネクタを選択します。</li>
+        <li><strong>チャットまたはチャネルでメッセージを投稿する</strong> を選択します。</li>
+        <li><strong>投稿者</strong> は通常 <strong>Flow bot</strong> を選びます。</li>
+        <li><strong>投稿先</strong> は <strong>Channel</strong> を選びます。</li>
+        <li>通知先のTeamとChannelを選択します。</li>
+      </ol>
+
+      <h3>5.2 メッセージ本文を作る</h3>
+      <p>本文欄には、RSSトリガーの動的コンテンツを差し込みます。以下は実運用しやすい例です。</p>
+      <pre><code>新しいLLMモデル関連ニュースが公開されました。
+
+タイトル: Feed title
+リンク: Primary feed link
+公開日: Feed published on
+
+概要:
+Feed summary</code></pre>
+
+      <p>Power Automateの動的コンテンツ名は環境の言語設定やコネクタ表示によって少し変わる場合があります。対応関係は次の通りです。</p>
+      <table>
+        <thead>
+          <tr><th>入れたい内容</th><th>選ぶ動的コンテンツの目安</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>記事タイトル</td><td><code>Feed title</code> または <code>フィード タイトル</code></td></tr>
+          <tr><td>記事URL</td><td><code>Primary feed link</code> または <code>プライマリ フィード リンク</code></td></tr>
+          <tr><td>公開日時</td><td><code>Feed published on</code> または <code>フィードの公開日時</code></td></tr>
+          <tr><td>概要</td><td><code>Feed summary</code> または <code>フィードの概要</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3>5.3 HTMLリンク形式にする場合</h3>
+      <p>Teams本文でHTMLが許可される形式の場合は、次のようにリンクを見やすくできます。</p>
+      <pre><code>&lt;p&gt;新しいLLMモデル関連ニュースが公開されました。&lt;/p&gt;
+&lt;p&gt;&lt;a href="Primary feed link"&gt;Feed title&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;Feed summary&lt;/p&gt;</code></pre>
+      <div class="warning callout">
+        動的コンテンツは文字として入力するのではなく、Power Automateの右側パネルから選択してください。手入力した <code>Feed title</code> は変数として展開されません。
+      </div>
+    </section>
+
+    <section id="test">
+      <h2>6. テストと運用確認</h2>
+      <h3>6.1 フローを保存してテストする</h3>
+      <ol>
+        <li>画面右上の <strong>保存</strong> を押します。</li>
+        <li><strong>テスト</strong> を押します。</li>
+        <li>手動テストを選択します。</li>
+        <li>GitHub Actionsの <strong>Collect LLM Model Feed</strong> ワークフローを手動実行するか、新しいRSSアイテムが生成されるまで待ちます。</li>
+        <li>フローの実行履歴に成功ログが出ることを確認します。</li>
+        <li>Teamsの対象チャネルにメッセージが投稿されることを確認します。</li>
+      </ol>
+
+      <h3>6.2 運用前チェックリスト</h3>
+      <ul class="checklist">
+        <li>GitHub Pagesのトップページが開ける。</li>
+        <li>登録したRSS URLをブラウザで開くとXMLが表示される。</li>
+        <li>Power AutomateのRSSトリガーに <code>https://</code> のURLを登録している。</li>
+        <li>Teams投稿先のTeamとChannelが正しい。</li>
+        <li>フロー所有者にTeams投稿権限がある。</li>
+        <li>GitHub ActionsのSecretsに <code>OPENAI_API_KEY</code> が設定されている。</li>
+      </ul>
+    </section>
+
+    <section id="troubleshooting">
+      <h2>7. トラブルシュート</h2>
+      <table>
+        <thead>
+          <tr><th>症状</th><th>確認すること</th><th>対応</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Power AutomateがRSSを読み込めない</td>
+            <td>RSS URLがGitHub Pagesの <code>https://</code> URLになっているか</td>
+            <td>トップページのRSS URLをコピーし直して登録します。</td>
+          </tr>
+          <tr>
+            <td>Teamsに投稿されない</td>
+            <td>フローの実行履歴、Teams投稿先、接続アカウントの権限</td>
+            <td>失敗した実行の詳細を開き、Teamsコネクタの認証を更新します。</td>
+          </tr>
+          <tr>
+            <td>新しい記事が通知されない</td>
+            <td>GitHub Actionsが成功しているか、RSSに新しい <code>item</code> があるか</td>
+            <td>Actionsを手動実行し、<code>docs/feeds/all.xml</code> の更新日時を確認します。</td>
+          </tr>
+          <tr>
+            <td>同じ内容が複数回通知される</td>
+            <td>RSSアイテムの <code>guid</code> が変わっていないか</td>
+            <td>記事IDまたはURLが安定しているか確認します。フィードを再作成するだけなら通常は重複しません。</td>
+          </tr>
+          <tr>
+            <td>概要がHTMLタグ付きで見える</td>
+            <td>Teamsアクションの本文形式</td>
+            <td>プレーンテキストの本文例を使うか、HTMLとして解釈される投稿形式に変更します。</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>参考リンク</h3>
+      <ul>
+        <li><a href="https://learn.microsoft.com/en-us/connectors/rss/" target="_blank" rel="noopener">Microsoft Learn: RSS connector</a></li>
+        <li><a href="https://learn.microsoft.com/en-us/power-automate/teams/send-a-message-in-teams" target="_blank" rel="noopener">Microsoft Learn: Send a message in Teams using Power Automate</a></li>
+        <li><a href="https://learn.microsoft.com/en-gb/connectors/teams/" target="_blank" rel="noopener">Microsoft Learn: Microsoft Teams connector</a></li>
+        <li><a href="https://docs.github.com/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site" target="_blank" rel="noopener">GitHub Docs: Configuring a publishing source for your GitHub Pages site</a></li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
