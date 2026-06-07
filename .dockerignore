@@ -8,6 +8,6 @@ openspec
 public
 README.md
 TASKS.md
-assets
+assets/readme
 .env
 .env.*
