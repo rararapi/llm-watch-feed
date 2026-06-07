@@ -34,7 +34,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# AIニュース全般を対象とする。大別して
+#   1) モデルプロバイダ／開発元（一次情報）
+#   2) AI専門・テック系メディア（資金調達・企業動向・規制・業界ニュース）
+#   3) 研究・開発者向け（論文・実践知）
+# 追加候補は事前に取得可否（HTTP 200 + RSS実体あり）を検証済み。
+# 公開RSSが無い／HTMLしか返さないソース（Anthropic, Meta AI, Mistral,
+# Cohere, Stability AI 等）は現時点では含めていない。
 RSS_SOURCES = [
+    # --- モデルプロバイダ／開発元（一次情報） ---
     {
         "name": "OpenAI",
         "url": "https://openai.com/news/rss.xml",
@@ -42,6 +50,10 @@ RSS_SOURCES = [
     {
         "name": "Google DeepMind",
         "url": "https://deepmind.google/blog/rss.xml",
+    },
+    {
+        "name": "Google AI",
+        "url": "https://blog.google/technology/ai/rss/",
     },
     {
         "name": "Google Developers Blog",
@@ -55,61 +67,165 @@ RSS_SOURCES = [
         "name": "Microsoft AI Blog",
         "url": "https://blogs.microsoft.com/ai/feed/",
     },
+    {
+        "name": "AWS Machine Learning Blog",
+        "url": "https://aws.amazon.com/blogs/machine-learning/feed/",
+    },
+    {
+        "name": "NVIDIA Blog",
+        "url": "https://blogs.nvidia.com/feed/",
+    },
+    {
+        "name": "NVIDIA Developer Blog",
+        "url": "https://developer.nvidia.com/blog/feed",
+    },
+    # --- 研究機関・大学・研究ブログ ---
+    {
+        "name": "Google Research",
+        "url": "https://research.google/blog/rss/",
+    },
+    {
+        "name": "Microsoft Research",
+        "url": "https://www.microsoft.com/en-us/research/feed/",
+    },
+    {
+        "name": "MIT News AI",
+        "url": "https://news.mit.edu/topic/mitartificial-intelligence2-rss.xml",
+    },
+    {
+        "name": "BAIR Blog",
+        "url": "https://bair.berkeley.edu/blog/feed.xml",
+    },
+    # --- AI専門・テック系メディア（英語） ---
+    {
+        "name": "TechCrunch AI",
+        "url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+    },
+    {
+        "name": "VentureBeat AI",
+        "url": "https://venturebeat.com/category/ai/feed/",
+    },
+    {
+        "name": "The Verge AI",
+        "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+    },
+    {
+        "name": "Ars Technica AI",
+        "url": "https://arstechnica.com/ai/feed/",
+    },
+    {
+        "name": "MIT Technology Review AI",
+        "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed",
+    },
+    {
+        "name": "WIRED AI",
+        "url": "https://www.wired.com/feed/tag/ai/latest/rss",
+    },
+    {
+        "name": "The Decoder",
+        "url": "https://the-decoder.com/feed/",
+    },
+    # --- 国内：政策・総合媒体 ---
+    {
+        "name": "デジタル庁",
+        "url": "https://www.digital.go.jp/rss/news.xml",
+    },
+    {
+        "name": "ITmedia AI＋",
+        "url": "https://rss.itmedia.co.jp/rss/2.0/aiplus.xml",
+    },
+    {
+        "name": "＠IT Smart & Social",
+        "url": "https://rss.itmedia.co.jp/rss/2.0/ait_smart.xml",
+    },
+    {
+        "name": "Publickey",
+        "url": "https://www.publickey1.jp/atom.xml",
+    },
+    # --- 国内：企業技術ブログ（実装知見） ---
+    {
+        "name": "LINEヤフー Tech Blog",
+        "url": "https://techblog.lycorp.co.jp/ja/feed/index.xml",
+    },
+    {
+        "name": "Mercari Engineering",
+        "url": "https://engineering.mercari.com/blog/feed.xml",
+    },
+    {
+        "name": "Recruit Tech Blog",
+        "url": "https://blog.recruit.co.jp/data/index.xml",
+    },
+    {
+        "name": "BrainPad Blog",
+        "url": "https://blog.brainpad.co.jp/rss",
+    },
+    {
+        "name": "DeNA Engineering",
+        "url": "https://engineering.dena.com/index.xml",
+    },
+    {
+        "name": "NTT Communications Engineers' Blog",
+        "url": "https://engineers.ntt.com/feed",
+    },
+    # --- 研究・開発者向け（個人） ---
+    {
+        "name": "Simon Willison's Weblog",
+        "url": "https://simonwillison.net/atom/everything/",
+    },
 ]
 
 MODELS_JSON_PATH = Path(os.environ.get("MODELS_JSON_PATH", "docs/data/models.json"))
-MAX_NEW_ARTICLES = 10
+# ソース数増加に伴い、1回の実行で各ソースの最新まで処理が回るよう上限を引き上げ。
+# 新着はソースごとにラウンドロビンで並べる（後述）が、デジタル庁や企業技術ブログ等の
+# 一般ソースは非AI記事も混ざり、それらも分析前に上限へ計上され破棄される。
+# 上限はその破棄分も見込んだ値。Gemini Flash の1日1回実行なら現実的なコスト。
+MAX_NEW_ARTICLES = 40
 MAX_TOTAL_ARTICLES = 500
 
-SYSTEM_PROMPT = """あなたはAIアプリ開発者向けのLLMモデル情報アナリストです。
-以下の記事が、LLMモデル情報として重要かを判定してください。
+SYSTEM_PROMPT = """あなたはAI開発者・ウォッチャー向けのAIニュースアナリストです。
+以下の記事が、AIニュースとして掲載に値するかを判定してください。
 
-対象にするもの:
-- 新モデル発表
-- モデルアップデート
-- モデル性能改善
-- 価格変更
-- コンテキスト長変更
-- マルチモーダル対応
-- コーディング性能
-- 推論モデル
-- オープンウェイトモデル
-- API提供開始・終了
+対象にするもの（AIニュース全般）:
+- 新モデル発表・アップデート・性能改善・価格/コンテキスト長変更・API提供開始/終了
+- マルチモーダル・推論・コーディング・オープンウェイトなどモデル系の話題
+- AIエージェント／開発ツール／フレームワーク／RAG など開発者向けリリース
+- 注目すべき研究・論文・ベンチマーク
+- 資金調達・買収・企業動向・人事などの業界ニュース
+- AIに関する規制・政策・ガバナンス
+- AIのセキュリティ・安全性に関する重要な話題
 
-対象外:
-- 一般的なAIニュース
-- 企業導入事例
-- 資金調達
-- 法規制
-- RAG実装（ただし主題が新モデルや性能なら対象にする）
-- Agentフレームワーク（ただし主題が新モデルや性能なら対象にする）
-- セキュリティ
-- 論文全般
+対象外（掲載しない）:
+- AIと実質的に無関係な一般ニュース
+- 内容の薄い広告・宣伝・イベント告知のみの記事
 
-モデル種別は以下のみ使用（1つ選択）:
+種別 (model_type) は以下のみ使用（1つ選択）。特定モデルの話題でなければ Other:
 Frontier, Reasoning, Coding, Multimodal, Open, Small, Embedding, Audio, Video, Other
 
 重要度の基準:
-A: AIアプリのモデル選定・API利用・コスト・性能・PoC優先度に直接影響する重要なモデルアップデート
-B: 今すぐ対応不要だが、ウォッチまたは今後のPoC候補として有用なモデル情報
-C: モデル関連ではあるが、低優先度
+A: AI開発者の意思決定（モデル選定・API利用・コスト・採用技術・重要な業界/規制動向）に直接影響する重要ニュース
+B: 今すぐ対応不要だが、ウォッチ価値のあるAIニュース
+C: AI関連だが低優先度
 
 出力はJSONのみ。説明文は一切不要。必ず以下のJSON形式のみで回答すること:
 
 {
   "is_model_related": true,
-  "model_relevance_reason": "新しいフロンティアモデルの発表であるため",
+  "model_relevance_reason": "AIニュースとして掲載すべき理由を簡潔に",
   "model_name": "GPT-5.1",
   "provider": "OpenAI",
   "model_type": "Frontier",
   "summary": "日本語で3行以内の要約",
-  "impact": "AIアプリ開発への影響",
+  "impact": "AI開発・利用への影響",
   "action": "推奨アクション",
   "importance": "A",
   "tags": ["Frontier", "API"]
 }
 
-model_nameが不明な場合は "Unknown" を使用。
+注: 互換性のため掲載可否のフラグは "is_model_related" という名前のままにしている。
+AIニュースとして掲載すべきなら true、対象外なら false を返すこと。
+特定モデルの話題でない場合は model_name を "Unknown"、model_type を "Other" とし、
+provider には関係する企業・組織名（不明なら空文字列）を入れる。
+tags は内容に応じて自由に付与（例: Funding, Regulation, Agent, RAG, Research, Security など）。
 is_model_related が false の場合、他フィールドは空文字列と空配列でよい。"""
 
 
@@ -269,11 +385,20 @@ def main() -> None:
     seen_urls = {a["url"] for a in existing}
     logger.info(f"Existing articles: {len(existing)}")
 
-    raw: list[dict] = []
+    # ソースごとに新着を集め、ラウンドロビンで均等に取り込む。
+    # 単純連結だと先頭ソースだけで MAX_NEW_ARTICLES に達し、後段ソースが
+    # 取り込まれにくくなるため（ソース数が多いほど顕著）。
+    per_source_new: list[list[dict]] = []
     for source in RSS_SOURCES:
-        raw.extend(fetch_source(source))
+        fetched = fetch_source(source)
+        per_source_new.append([a for a in fetched if a["url"] not in seen_urls])
 
-    new_articles = [a for a in raw if a["url"] not in seen_urls]
+    new_articles: list[dict] = []
+    for i in range(max((len(s) for s in per_source_new), default=0)):
+        for src_articles in per_source_new:
+            if i < len(src_articles):
+                new_articles.append(src_articles[i])
+
     logger.info(
         f"New articles: {len(new_articles)} (processing up to {MAX_NEW_ARTICLES})"
     )
