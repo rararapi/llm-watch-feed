@@ -180,57 +180,16 @@
       font-size: 12px;
       color: #6b7280;
     }
-    .affiliate-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 12px;
-    }
-    .affiliate-card {
-      background: #fff;
-      border: 1px solid #d9dee8;
-      border-radius: 6px;
-      padding: 16px;
+    .affiliate-banner-grid {
       display: flex;
-      flex-direction: column;
-      gap: 8px;
+      flex-wrap: wrap;
+      gap: 16px;
     }
-    .affiliate-category {
-      display: inline-block;
-      align-self: flex-start;
-      padding: 1px 8px;
-      border-radius: 999px;
-      background: #e8eef8;
-      color: #1f4f88;
-      font-size: 11px;
-      font-weight: 600;
+    .affiliate-banner-grid img[width="300"] {
+      display: block;
+      max-width: 100%;
+      height: auto;
     }
-    .affiliate-title {
-      margin: 0;
-      font-size: 15px;
-      color: #111827;
-    }
-    .affiliate-desc {
-      margin: 0;
-      flex: 1;
-      font-size: 12px;
-      color: #4b5563;
-      line-height: 1.6;
-    }
-    .affiliate-cta {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      align-self: flex-start;
-      min-height: 34px;
-      padding: 6px 14px;
-      border-radius: 6px;
-      background: #2563eb;
-      color: #fff;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 13px;
-    }
-    .affiliate-cta:hover { background: #1d4ed8; }
     footer {
       padding: 16px;
       text-align: center;
@@ -243,7 +202,7 @@
       main { padding: 18px 10px 36px; }
       .feed-url-row { align-items: stretch; }
       table { display: block; overflow-x: auto; }
-      .affiliate-grid { grid-template-columns: 1fr; }
+
     }
   </style>
 </head>
@@ -280,7 +239,20 @@
     <section>
       <h2>Recommended AI Tools</h2>
       <p class="affiliate-notice">PR・広告：このセクションにはアフィリエイトリンクが含まれます。</p>
-      <div class="affiliate-grid" id="affiliate-grid"></div>
+      <div class="affiliate-banner-grid">
+        <div>
+          <a href="https://px.a8.net/svt/ejp?a8mat=4B5Q83+91O4OI+5J4W+5ZEMP" target="_blank" rel="nofollow sponsored noopener noreferrer">
+            <img border="0" width="300" height="250" alt="AI搭載ボイスレコーダー Plaud" src="https://www26.a8.net/svt/bgt?aid=260607747547&wid=001&eno=01&mid=s00000025808001005000&mc=1">
+          </a>
+          <img border="0" width="1" height="1" src="https://www17.a8.net/0.gif?a8mat=4B5Q83+91O4OI+5J4W+5ZEMP" alt="" style="border:0;display:block;">
+        </div>
+        <div>
+          <a href="https://px.a8.net/svt/ejp?a8mat=4B5Q83+93GFHU+5QLS+BZ0Z5" target="_blank" rel="nofollow sponsored noopener noreferrer">
+            <img border="0" width="300" height="250" alt="AIスマートリング RingConn" src="https://www29.a8.net/svt/bgt?aid=260607747550&wid=001&eno=01&mid=s00000026776002011000&mc=1">
+          </a>
+          <img border="0" width="1" height="1" src="https://www19.a8.net/0.gif?a8mat=4B5Q83+93GFHU+5QLS+BZ0Z5" alt="" style="border:0;display:block;">
+        </div>
+      </div>
     </section>
   </main>
 
@@ -289,29 +261,6 @@
   </footer>
 
   <script>
-    const affiliateLinks = [
-      {
-        id: "plaud",
-        name: "Plaud",
-        title: "AI搭載ボイスレコーダー Plaud",
-        description: "会議・インタビュー・アイデアメモを録音し、AIで文字起こし・要約。AIアプリ開発者やコンサルの情報整理に役立つボイスレコーダー。",
-        category: "Productivity",
-        buttonLabel: "Plaudを見る",
-        url: "https://px.a8.net/svt/ejp?a8mat=4B5Q83+91O4OI+5J4W+5YZ76",
-        impressionPixelUrl: "https://www13.a8.net/0.gif?a8mat=4B5Q83+91O4OI+5J4W+5YZ76",
-      },
-      {
-        id: "ringconn",
-        name: "RingConn",
-        title: "AIスマートリング RingConn",
-        description: "睡眠・健康データを可視化し、日々のパフォーマンス管理に活用できるスマートリング。AI時代の集中力とコンディション管理に。",
-        category: "Health",
-        buttonLabel: "RingConnを見る",
-        url: "https://px.a8.net/svt/ejp?a8mat=4B5Q83+93GFHU+5QLS+BWVTE",
-        impressionPixelUrl: "https://www19.a8.net/0.gif?a8mat=4B5Q83+93GFHU+5QLS+BWVTE",
-      },
-    ];
-
     const FEEDS = [
       { name: "All", file: "feeds/all.xml", desc: "重要度AまたはBのすべてのLLMモデル関連情報" },
       { name: "Major Models", file: "feeds/major-models.xml", desc: "重要度Aの主要モデル情報" },
@@ -421,19 +370,7 @@
       }
     }
 
-    function renderAffiliates() {
-      const grid = document.getElementById("affiliate-grid");
-      grid.innerHTML = affiliateLinks.map((item) => `<article class="affiliate-card">
-        <span class="affiliate-category">${item.category}</span>
-        <h3 class="affiliate-title">${item.title}</h3>
-        <p class="affiliate-desc">${item.description}</p>
-        <a class="affiliate-cta" href="${item.url}" target="_blank" rel="nofollow sponsored noopener noreferrer">${item.buttonLabel}</a>
-        <img src="${item.impressionPixelUrl}" width="1" height="1" alt="" style="border:0;display:block;" />
-      </article>`).join("");
-    }
-
     renderFeeds(getBaseUrl());
-    renderAffiliates();
     loadArticles();
   </script>
 </body>
