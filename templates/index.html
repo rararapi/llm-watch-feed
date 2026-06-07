@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m %}
+
+{% block content %}
+<section class="intro">
+  <h1 class="intro__title">AIニュース要約</h1>
+  <p class="intro__lead">モデル・API・Agent・論文・業界動向まで、AIニュースを自動収集し、要点・影響・推奨アクションを日本語で要約してお届けします。</p>
+  {% include "partials/_lang_switcher.html" %}
+</section>
+
+{% include "partials/_affiliate.html" %}
+
+{% if total == 0 %}
+<div class="empty-state">まだ表示できるニュースがありません。収集ジョブが実行されると一覧とRSSが更新されます。</div>
+{% else %}
+
+<div class="toolbar" id="toolbar">
+  <div class="toolbar__row">
+    <div class="segmented" role="group" aria-label="重要度で絞り込み">
+      <button type="button" class="segmented__btn is-active" data-filter-importance="all">すべて</button>
+      <button type="button" class="segmented__btn" data-filter-importance="A">重要度A</button>
+      <button type="button" class="segmented__btn" data-filter-importance="B">B</button>
+      <button type="button" class="segmented__btn" data-filter-importance="C">C</button>
+    </div>
+    <select class="select" id="filter-source" aria-label="ソースで絞り込み">
+      <option value="all">すべてのソース</option>
+      {% for s in sources %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+    </select>
+    <input type="search" class="search" id="filter-search" placeholder="キーワード検索…" aria-label="キーワード検索">
+  </div>
+  <p class="toolbar__count" id="result-count">{{ total }}件</p>
+</div>
+
+<div id="news-list">
+  {% for group in groups %}
+  <section class="news-group" data-group="{{ group.key }}">
+    <h2 class="news-group__label">{{ group.label }}</h2>
+    <div class="card-grid">
+      {% for a in group.articles %}{{ m.card(a) }}{% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+  <div class="empty-state is-hidden" id="no-results">条件に一致するニュースがありません。</div>
+</div>
+{% endif %}
+
+<section class="subscribe-cta">
+  <h2 class="section-title">RSSで受け取る</h2>
+  <p>新着をRSSで購読できます。Microsoft Teams への通知連携（Power Automate）にも対応。</p>
+  <p><a class="btn" href="{{ page_url('subscribe.html') }}">RSS購読・連携手順を見る</a></p>
+</section>
+{% endblock %}

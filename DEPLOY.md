@@ -2,26 +2,35 @@
 
 構成は **方式A**:
 
-- **画面(HTML/JS)** … Firebase Hosting が配信（無料HTTPS、`*.web.app`、独自ドメインも無料で接続可）
-- **データ(`data/models.json`)とRSSフィード(`feeds/*.xml`)** … 公開GCSバケットが配信
-- **ニュース更新** … Cloud Run Job が GCS へ書き込むだけ（**サイトのデプロイ不要**）
-- **サイトデプロイ** … 画面を変えたときだけ `firebase deploy`（ニュース更新とは独立）
+- **画面(index/subscribe)** … Firebase Hosting が綺麗なURLで入口提供（無料HTTPS、`*.web.app`、独自ドメイン可）
+- **データ(`data/models.json`)・RSS(`feeds/*.xml`)・個別記事ページ(`articles/*.html`)・サイト(`index.html` 等)** … 公開GCSバケットが配信
+- **ニュース更新** … Cloud Run Job が GCS へ書き込むだけ（**サイトのデプロイ不要**）。記事ページHTMLは feeds と同じ“バッチ生成物”
+- **サイトデプロイ** … テンプレ/CSS/JS を変えたときだけ `deploy_site.sh`（= 画面を再生成して `firebase deploy`。ニュース更新とは独立）
 
 ```
 Cloud Scheduler ─毎日─▶ Cloud Run Job (run_job.sh)
-   1.GCS→models.json取得  2.collect.py  3.generate_feeds.py
-   4.data/models.json をGCSへ保存  5.feeds/ をGCSへ配信
-        └─ 公開GCSバケット（data/ + feeds/ をHTTPS配信, CORS有効）
+   1.GCS→models.json取得  2.collect.py  3.generate_feeds.py  4.generate_pages.py
+   5.data/models.json をGCSへ保存  6.feeds/ をGCSへ配信  7.サイト(index/articles/assets)をGCSへ配信
+        └─ 公開GCSバケット（data/ + feeds/ + index.html/subscribe.html/articles/ + assets/ をHTTPS配信, CORS有効）
 
-Firebase Hosting ──▶ index.html / power-automate.html（画面のみ）
-   フロントJS は data/models.json と feeds/*.xml を GCS の絶対URLから fetch（CORS）
+Firebase Hosting ──▶ index.html / subscribe.html / assets / power-automate.html（画面の入口）
+   記事ページ(articles/<id>.html)・データ・フィードは GCS の絶対URLを参照
         └─ 公開URL: https://<project>.web.app （独自ドメインは無料で接続可）
 ```
 
 > なぜ分かれるか: Firebase Hosting は「デプロイした不変スナップショット」を配信するため、毎回更新される
-> データ/フィードを載せると更新のたびにデプロイが要る。これらを公開GCSバケット（その場で上書き配信）に
-> 置くことで、ニュース更新を「GCS書き込みのみ・デプロイ不要」に保つ。フィードURLはGCSのURLのままになる
-> （フィードURLまで独自ドメインにするには有料の方式B=ロードバランサ/CDN or Functions rewrite が必要）。
+> データ/フィード/記事ページを載せると更新のたびにデプロイが要る。これらを公開GCSバケット（その場で上書き配信）に
+> 置くことで、ニュース更新を「GCS書き込みのみ・デプロイ不要」に保つ。
+>
+> 記事ページのOGP/共有URL: SNSクローラはJSを実行しないため、個別記事ページは generate_pages.py が
+> OGP/Twitter Card/JSON-LD を焼き込んだ**静的HTML**として事前生成し、GCSへ日次配信する。共有URL・`og:url`・
+> canonical は配信元の GCS 絶対URL（`https://storage.googleapis.com/<bucket>/articles/<id>.html`）になる。
+> 機能はするが長くハッシュIDなので、綺麗な共有URLにするには後続フェーズ（独自ドメイン＝方式B=LB/CDN or rewrite、
+> および記事IDのスラッグ化）が必要。OGP画像は当面 `assets/img/og-default.png` の共通バナー1枚（記事ごとの
+> 画像生成は後続フェーズ＝Pillow等が必要なため見送り）。
+>
+> 実クローラ検証（X Card Validator / Slack unfurl 等）は**GCS publish後の公開URL**に対して行うこと
+> （ローカルプレビューではOGP markup の有無までしか確認できない）。
 
 ## 前提
 
@@ -146,18 +155,20 @@ gcloud scheduler jobs create http "${JOB}-daily" \
 
 ## 5. サイト（画面）デプロイ — Firebase Hosting（初回・変更時のみ）
 
-画面の静的ファイル（`docs/index.html` / `docs/power-automate.html`）を Firebase Hosting へデプロイする。
-ニュース更新とは独立で、**画面を変更したときだけ**実行すればよい。
+画面（`docs/index.html` / `docs/subscribe.html` / `docs/assets/` と手書きの `docs/power-automate.html`）を
+Firebase Hosting へデプロイする。`deploy_site.sh` は **`generate_pages.py` で画面を `docs/` に再生成してから**
+`firebase deploy` する（テンプレ/CSS/JS を最新化）。ニュース更新とは独立で、**テンプレ/デザインを変更したときだけ**実行する。
 
 ```bash
 firebase login        # 初回のみ（ブラウザ認証）
 firebase hosting:sites:list --project "$PROJECT_ID"   # サイト確認
-./scripts/deploy_site.sh                               # = firebase deploy --only hosting
+GCS_BUCKET="$BUCKET" ./scripts/deploy_site.sh         # 最新 models.json を取得→画面再生成→firebase deploy
 ```
 
 公開URL: `https://${PROJECT_ID}.web.app`（HTTPS）。
-画面のフロントJS（`docs/index.html` の `DATA_ORIGIN`）は data/feeds を **GCSバケットの絶対URL** から取得する。
-バケット名を変えた場合は `DATA_ORIGIN` を合わせて更新し、再デプロイする。
+記事ページ・データ・フィードは **公開GCSバケットの絶対URL**（`SITE_URL`）を参照する。
+バケット名やドメインを変えた場合は `SITE_URL` を更新して再生成・再デプロイする。
+記事ページ(`articles/*.html`)は Firebase には載せず、GCSが日次配信する（OGP共有URLはGCSの絶対URL）。
 
 ## 6. 独自ドメイン（任意・無料）
 

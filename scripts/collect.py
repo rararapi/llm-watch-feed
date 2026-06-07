@@ -12,12 +12,15 @@ Vertex AI で要約・分析し、利用できなければダミー文章を埋�
 
 import calendar
 import hashlib
+import html
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urljoin
 
 import feedparser
 import requests
@@ -291,6 +294,39 @@ def fetch_source(source: dict) -> list[dict]:
         return []
 
 
+# 記事ページから og:image / twitter:image を抜くための軽量パーサ（BeautifulSoup等は増やさない）
+_META_IMAGE_RE = re.compile(
+    r"<meta[^>]+(?:property|name)\s*=\s*[\"'](?:og:image(?::url)?|twitter:image(?::src)?)[\"'][^>]*>",
+    re.I,
+)
+_CONTENT_RE = re.compile(r"content\s*=\s*[\"']([^\"']+)[\"']", re.I)
+
+
+def fetch_og_image(page_url: str, timeout: int = 15) -> Optional[str]:
+    """記事ページの og:image（無ければ twitter:image）を取得して絶対URLで返す。
+
+    画像はソース元のCDNをそのまま参照する（再ホストしない）。取得失敗は致命的でないため
+    None を返し、サムネは画面側でプレースホルダにフォールバックさせる。
+    """
+    try:
+        resp = requests.get(
+            page_url,
+            timeout=timeout,
+            headers={"User-Agent": "LLMWatchFeed/1.0 (+https://github.com)"},
+        )
+        resp.raise_for_status()
+        # メタタグは <head> 上部にあるため全文の先頭側だけ見れば十分
+        page_html = resp.text[:200_000]
+        for tag in _META_IMAGE_RE.finditer(page_html):
+            m = _CONTENT_RE.search(tag.group(0))
+            if m and m.group(1).strip():
+                # 取得元HTMLで &amp; 等にエンコードされた content をデコードして素のURLに戻す
+                return urljoin(page_url, html.unescape(m.group(1).strip()))
+    except Exception as e:
+        logger.warning(f"og:image fetch failed for {page_url}: {e}")
+    return None
+
+
 DUMMY_NOTICE = "（Vertex AI未設定のため自動生成されたダミー文章です）"
 
 
@@ -422,6 +458,7 @@ def main() -> None:
             "source": article["source"],
             "published_at": article["published_at"],
             "collected_at": datetime.now(timezone.utc).isoformat(),
+            "image_url": fetch_og_image(article["url"]),
             "is_model_related": True,
             "model_relevance_reason": result.get("model_relevance_reason", ""),
             "model_name": result.get("model_name") or "Unknown",

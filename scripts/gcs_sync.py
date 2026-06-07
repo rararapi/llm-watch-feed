@@ -3,7 +3,7 @@
 バケットは Web 配信ルートを兼ねる（独自ドメインは後段の HTTPS ロードバランサ + Cloud CDN で付与）。
 パイプラインは2系統に分離している:
 
-- ニュース更新（毎日）: download → collect/generate → upload(状態=配信データ) → publish-feeds
+- ニュース更新（毎日）: download → collect/generate → upload(状態=配信データ) → publish-feeds → publish-pages
 - サイトデプロイ（変更時のみ）: publish-site
 
 状態 models.json の正本は `gs://<bucket>/<GCS_OBJECT>`（既定 data/models.json）であり、
@@ -14,6 +14,7 @@
 - GCS_OBJECT       状態=配信データのオブジェクトキー（既定: data/models.json）
 - MODELS_JSON_PATH ローカルの読み書き先（collect.py / generate_feeds.py と共有）
 - FEEDS_DIR        生成済みフィードのローカルディレクトリ（既定: docs/feeds）
+- PAGES_DIR        生成済みサイト(index/articles/assets)のローカルディレクトリ（publish-pages 用、既定: docs）
 - SITE_DIR         サイト静的ファイルのローカルディレクトリ（publish-site 用、既定: docs）
 """
 
@@ -43,6 +44,7 @@ BUCKET = os.environ.get("GCS_BUCKET")
 OBJECT = os.environ.get("GCS_OBJECT", "data/models.json")
 LOCAL_PATH = Path(os.environ.get("MODELS_JSON_PATH", "docs/data/models.json"))
 FEEDS_DIR = Path(os.environ.get("FEEDS_DIR", "docs/feeds"))
+PAGES_DIR = Path(os.environ.get("PAGES_DIR", "docs"))
 SITE_DIR = Path(os.environ.get("SITE_DIR", "docs"))
 
 # publish-site で配信するサイト静的ファイル（SITE_DIR 直下からの相対パス）
@@ -53,6 +55,9 @@ _CONTENT_TYPES = {
     ".xml": "application/rss+xml; charset=utf-8",
     ".json": "application/json; charset=utf-8",
     ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".svg": "image/svg+xml",
 }
 # 毎回更新される配信物は短めにキャッシュし、ドメイン/CDN 追加後も更新が伝播するようにする
 _CACHE_CONTROL = "public, max-age=300"
@@ -76,6 +81,18 @@ def _upload_file(local: Path, object_key: str) -> None:
     blob.cache_control = _CACHE_CONTROL
     blob.upload_from_filename(str(local), content_type=_content_type(local))
     logger.info(f"Uploaded {local} -> gs://{BUCKET}/{object_key}")
+
+
+def _upload_dir(local_root: Path, key_prefix: str) -> int:
+    """local_root 配下のファイルを再帰的にアップロードする。
+    オブジェクトキー = key_prefix + (local_root からの相対パス)。"""
+    count = 0
+    for path in sorted(local_root.rglob("*")):
+        if path.is_file():
+            rel = path.relative_to(local_root).as_posix()
+            _upload_file(path, f"{key_prefix}{rel}")
+            count += 1
+    return count
 
 
 def download() -> None:
@@ -113,6 +130,30 @@ def publish_feeds() -> None:
     logger.info(f"Published {count} feed(s) to gs://{BUCKET}/feeds/")
 
 
+def publish_pages() -> None:
+    """生成済みサイト(index/subscribe/articles/assets)を GCS バケット直下へ配信する。
+
+    data/ と feeds/ は別コマンド(upload / publish-feeds)が担当するため、ここでは触らない。
+    記事ページは feeds と同じ“バッチ生成物”であり、サイトの「デプロイ」ではない。
+    """
+    index = PAGES_DIR / "index.html"
+    if not index.exists():
+        logger.error(f"{index} does not exist — run generate_pages.py first")
+        sys.exit(1)
+
+    published = 0
+    for name in ("index.html", "subscribe.html"):
+        local = PAGES_DIR / name
+        if local.exists():
+            _upload_file(local, name)
+            published += 1
+    for subdir in ("articles", "assets"):
+        local_dir = PAGES_DIR / subdir
+        if local_dir.is_dir():
+            published += _upload_dir(local_dir, f"{subdir}/")
+    logger.info(f"Published {published} page file(s) to gs://{BUCKET}/")
+
+
 def publish_site() -> None:
     """サイト静的ファイル(index.html 等)をバケット直下へ配信する（サイトデプロイ）。"""
     published = 0
@@ -133,6 +174,7 @@ COMMANDS = {
     "download": download,
     "upload": upload,
     "publish-feeds": publish_feeds,
+    "publish-pages": publish_pages,
     "publish-site": publish_site,
 }
 

@@ -57,18 +57,32 @@ scripts/generate_feeds.py
   - 6種類のRSS XMLを生成（出力先は環境変数 FEEDS_DIR、既定 docs/feeds/）
   - BASE_URLは環境変数SITE_URLで設定
 
+scripts/generate_pages.py
+  - models.json から Jinja2 でサイトを静的生成（SSG）: index.html / subscribe.html /
+    articles/<id>.html（SNS共有用にOGP・Twitter Card・JSON-LDを焼き込んだ個別記事ページ）/ assets
+  - 出力先は環境変数 PAGES_DIR（既定 docs、ジョブでは public）。PAGES_DIR は公開GCSバケット直下の
+    ミラー（各ファイルの相対パス = GCSオブジェクトキー = {SITE_URL}/<key>）
+  - テンプレートは templates/、サイト静的物は assets/site/。OGP/canonical/内部リンクは SITE_URL 基準の絶対URL
+  - 表示対象は重要度A/B。1記事の描画失敗で全体が落ちない（try/except）
+  - 一覧の絞り込み（重要度/ソース/キーワード）はサーバ生成カードを vanilla JS で表示切替
+
 scripts/gcs_sync.py / scripts/run_job.sh / scripts/deploy_site.sh
   - run_job.sh が Cloud Run Job のエントリポイント（ニュース更新ジョブ）
-    GCSからmodels.json取得 → collect → generate → GCSへ data/models.json と feeds/ を書き込み
-  - gcs_sync.py のコマンド: download / upload(=配信データ) / publish-feeds /（publish-site はGCS配信時の予備）
-  - deploy_site.sh は画面(HTML)を Firebase Hosting へデプロイ（サイト変更時のみ・ニュース更新とは独立）
+    GCSからmodels.json取得 → collect → generate_feeds → generate_pages →
+    GCSへ data/models.json・feeds/・サイト(index/articles/assets) を書き込み
+  - gcs_sync.py のコマンド: download / upload(=配信データ) / publish-feeds /
+    publish-pages(=生成サイトを配信) /（publish-site はGCS配信時の予備）
+  - deploy_site.sh は画面(index/subscribe/assets)を generate_pages.py で再生成してから
+    Firebase Hosting へデプロイ（テンプレ/デザイン変更時のみ・ニュース更新とは独立）
 
-docs/index.html
-  - 静的HTML + Vanilla JS。Firebase Hosting から配信
-  - フィードURLと models.json は公開GCSバケットの絶対URL（DATA_ORIGIN）からfetch（CORS設定済み）
+docs/（サイト出力。templates/ + assets/site/ がソース。生成物はgitignore）
+  - index.html / subscribe.html / articles/<id>.html / assets を generate_pages.py が生成
+  - 記事ページ(articles/)とデータ/フィードは公開GCSバケットが日次配信（OGPクローラはJSを実行しないため
+    記事ページは事前生成の静的HTML）。画面(index/subscribe)は Firebase Hosting にも載せて綺麗なURLで入口提供
+  - docs/power-automate.html は手書き（Teams連携手順。subscribe から参照）
 
 GCP 実行基盤（手順は DEPLOY.md）
-  - Cloud Scheduler が毎日 Cloud Run Job をトリガー → data/models.json と feeds/ をGCSへ書き込み（デプロイ不要）
+  - Cloud Scheduler が毎日 Cloud Run Job をトリガー → data/models.json・feeds/・サイト(index/articles/assets) をGCSへ書き込み（デプロイ不要）
   - 画面は Firebase Hosting（無料HTTPS・`*.web.app`・独自ドメインも無料で接続可）。データ/フィードは公開GCSバケット
   - 記事分析は Vertex AI（Gemini）を ADC（実行サービスアカウント）で利用。APIキー不要
     （GCP_PROJECT 未設定/権限不足ならダミーモード）
@@ -98,8 +112,11 @@ GitHub Pages から **GCP** へ移行済み。構築手順は `DEPLOY.md`。
 - APIキーをHTML・JSに絶対に書かない
 - `docs/`以下はすべて公開されるため機密情報を置かない
 - コメントはWHYが非自明な場合のみ記述
-- フロントエンドフレームワーク不使用（Vanilla HTML/JS/CSS）
-- 外部依存は増やさない（標準ライブラリ優先）
+- フロントエンドフレームワーク不使用（クライアントは Vanilla HTML/JS/CSS）。
+  サイトはサーバ側で Jinja2 による静的生成（SSG）を行う。Jinja2 はテンプレートエンジンであり
+  クライアントフレームワークではない。OGP付き個別記事ページをSNS共有用に事前生成するための意図的な採用。
+- 外部依存は最小限（標準ライブラリ優先）。サイト生成のための Jinja2 追加が唯一の例外。
+  クライアント側に追加ライブラリ・ビルドツール・FEフレームワークは持ち込まない。
 
 ---
 
@@ -119,6 +136,7 @@ GitHub Pages から **GCP** へ移行済み。構築手順は `DEPLOY.md`。
   "source": "OpenAI",
   "published_at": "2026-06-04T09:00:00+00:00",
   "collected_at": "2026-06-04T09:05:00+00:00",
+  "image_url": "https://example.com/og-image.jpg",
 
   "is_model_related": true,
   "model_relevance_reason": "新しいLLMモデルの発表であるため",
@@ -135,7 +153,9 @@ GitHub Pages から **GCP** へ移行済み。構築手順は `DEPLOY.md`。
 }
 ```
 
-`model_name` が不明な場合は `"Unknown"`。
+`model_name` が不明な場合は `"Unknown"`。`image_url` はサムネ用に元記事の og:image を
+取得したもの（`collect.py` が新着収集時に付与。既存分は `backfill_images.py` で補完）。
+取得できなければ `null`。画面側は画像が無い場合ソース名由来の色のプレースホルダを表示する。
 
 ---
 
@@ -183,7 +203,16 @@ python scripts/collect.py
 # フィード生成
 python scripts/generate_feeds.py
 
-# サイト確認（file://不可）
+# サイト生成（index/subscribe/articles/assets を PAGES_DIR=docs に出力）
+python scripts/generate_pages.py
+
+# ローカルでUI確認（デプロイ不要）。SITE_URL をローカルへ向けて生成し直し docs/ を配信。
+#   トップ http://localhost:8000/ ・記事 /articles/<id>.html。停止は Ctrl+C
+#   データが無ければ公開バケットから自動取得する
+./scripts/preview.sh          # ポート変更は ./scripts/preview.sh 8011
+
+# （手動でやる場合）file:// は不可。アセットは絶対URLなので SITE_URL をローカルに合わせる
+SITE_URL=http://localhost:8000 python scripts/generate_pages.py
 cd docs && python -m http.server 8000
 ```
 
@@ -193,8 +222,11 @@ GCP へのデプロイ・自動実行の手順は `DEPLOY.md` を参照。
 - `GCP_PROJECT` — Vertex AI のプロジェクトID（未設定ならダミー要約で動作）。認証はADCで行いAPIキーは不要
 - `VERTEX_LOCATION` — Vertex AI のリージョン（デフォルト: `us-central1`）
 - `VERTEX_MODEL` — Gemini モデル名（デフォルト: `gemini-2.5-flash`）
-- `SITE_URL` — 公開サイトのURL（generate_feeds.py用。当面はバケットURL、独自ドメイン設定後はそのURL）
-- `MODELS_JSON_PATH` / `FEEDS_DIR` — 入出力先（既定 `docs/data/models.json` / `docs/feeds/`。ジョブでは `public/` 配下）
+- `SITE_URL` — 配信物の絶対URL基準（generate_feeds.py のフィード自己リンク＋generate_pages.py の
+  OGP/canonical/asset/内部リンク。＝記事が配信される公開GCSオリジン。当面はバケットURL、独自ドメイン設定後はそのURL）
+- `SITE_NAME` / `SITE_TAGLINE` — サイトのブランド表記（generate_pages.py。既定 `AI News Watch` / タグライン）
+- `MODELS_JSON_PATH` / `FEEDS_DIR` / `PAGES_DIR` — 入出力先（既定 `docs/data/models.json` / `docs/feeds/` /
+  `docs`。ジョブでは `public/` 配下。PAGES_DIR はサイト生成先＝バケット直下のミラー）
 - `GCS_BUCKET` — 公開配信／状態バケット名（`scripts/gcs_sync.py` 用、クラウド実行時）
 - `GCS_OBJECT` — 状態＝配信データのキー（既定 `data/models.json`）
 - `SITE_DIR` — `gcs_sync.py publish-site`（GCS配信する場合の予備手段）が読むディレクトリ（既定 `docs`）。通常の画面デプロイは Firebase（`deploy_site.sh`）

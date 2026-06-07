@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as m %}
+
+{% block title %}{{ a._title }} | {{ site_name }}{% endblock %}
+{% block description %}{{ a._og_description }}{% endblock %}
+{% block head_extra %}{{ m.meta_og(a) }}{{ m.jsonld(a) }}{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb"><a href="{{ page_url('index.html') }}">← ニュース一覧へ</a></nav>
+
+{% include "partials/_affiliate.html" %}
+
+<article class="article imp-accent-{{ a.importance or 'C' }}">
+  <div class="article__hero">{{ m.thumb(a) }}</div>
+  <header class="article__header">
+    <div class="article__badges">
+      {{ m.badge(a.importance) }}
+      {% if a.model_type %}<span class="chip chip--type">{{ a.model_type }}</span>{% endif %}
+      <span class="article__source">{{ a.source or a.provider or '' }}</span>
+      <time class="article__date" datetime="{{ a.published_at or '' }}">{{ a._date }}</time>
+    </div>
+    <h1 class="article__title">{{ a._title }}</h1>
+  </header>
+
+  {% if a.summary %}
+  <section class="block block--summary">
+    <h2 class="block__label">要約</h2>
+    <div class="block__body">{% for line in a.summary.split('\n') %}{% if line.strip() %}<p>{{ line }}</p>{% endif %}{% endfor %}</div>
+  </section>
+  {% endif %}
+
+  {% if a.impact %}
+  <section class="block block--impact">
+    <h2 class="block__label">AI開発への影響</h2>
+    <div class="block__body"><p>{{ a.impact }}</p></div>
+  </section>
+  {% endif %}
+
+  {% if a.action %}
+  <section class="block block--action">
+    <h2 class="block__label">推奨アクション</h2>
+    <div class="block__body"><p>{{ a.action }}</p></div>
+  </section>
+  {% endif %}
+
+  <dl class="article__facts">
+    {% if a.model_name and a.model_name != 'Unknown' %}<dt>モデル名</dt><dd>{{ a.model_name }}</dd>{% endif %}
+    {% if a.provider %}<dt>提供元</dt><dd>{{ a.provider }}</dd>{% endif %}
+    {% if a.model_type %}<dt>種別</dt><dd>{{ a.model_type }}</dd>{% endif %}
+    <dt>ソース</dt><dd>{{ a.source or '-' }}</dd>
+    <dt>公開日</dt><dd>{{ a._date or '-' }}</dd>
+  </dl>
+
+  {% if a.tags %}
+  <div class="article__tags">
+    {% for tag in a.tags %}<span class="chip">{{ tag }}</span>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="article__actions">
+    <a class="btn" href="{{ a.url }}" target="_blank" rel="noopener">元記事を読む ↗</a>
+  </div>
+
+  <div class="share" aria-label="共有">
+    <span class="share__label">共有:</span>
+    <a class="share__btn" target="_blank" rel="noopener nofollow"
+       href="https://twitter.com/intent/tweet?text={{ a._share_text }}&url={{ article_url(a) | urlencode }}">X</a>
+    <a class="share__btn" target="_blank" rel="noopener nofollow"
+       href="https://social-plugins.line.me/lineit/share?url={{ article_url(a) | urlencode }}">LINE</a>
+    <button type="button" class="share__btn copy-btn" data-copy="{{ article_url(a) }}">リンクをコピー</button>
+  </div>
+</article>
+
+{% if related %}
+<section class="related">
+  <h2 class="section-title">関連ニュース</h2>
+  <div class="card-grid">
+    {% for r in related %}{{ m.card(r) }}{% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

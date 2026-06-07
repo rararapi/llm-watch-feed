@@ -6,6 +6,14 @@ __pycache__/
 
 # Cloud Run Job が生成する公開物のビルド出力（コミットしない）
 public/
+# generate_pages.py が docs/ に生成するビルド出力（ソースは templates/ と assets/site/）
+# docs/power-automate.html は手書きのため追跡対象（ここでは無視しない）
+docs/index.html
+docs/subscribe.html
+docs/articles/
+docs/assets/
+docs/data/
+docs/feeds/
 # firebase-tools が生成するローカルキャッシュ
 .firebase/
 

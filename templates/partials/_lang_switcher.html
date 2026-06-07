@@ -1,0 +1,8 @@
+{# 言語切替。content のある言語が複数あるときだけ表示（今は ja のみ＝非表示）。 #}
+{% if languages | length > 1 %}
+<div class="lang-switcher" aria-label="言語切替">
+  {% for l in languages %}
+  <a class="lang-switcher__item{{ ' is-active' if l == lang else '' }}" href="{{ lang_home_url(l) }}" hreflang="{{ l }}">{{ l | upper }}</a>
+  {% endfor %}
+</div>
+{% endif %}
