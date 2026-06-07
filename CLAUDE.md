@@ -41,7 +41,7 @@ RSSフィードに加え、収集ニュースの要約を本サイトでも公�
 ```
 scripts/collect.py
   - RSS_SOURCESからフィードを取得（feedparser + requests）
-  - 新着記事をOpenAI APIで分析（is_model_related判定）
+  - 新着記事をOpenAI APIで分析（is_model_related判定）。APIキー未設定時はダミー要約を埋め込む
   - モデル関連記事のみdocs/data/models.jsonに追記
   - URLのSHA-256ハッシュで重複排除
   - 1回の実行で最大MAX_NEW_ARTICLES=10件を処理
@@ -159,7 +159,7 @@ docs/index.html
 # 依存インストール
 pip install -r requirements.txt
 
-# 記事収集（OPENAI_API_KEY必須）
+# 記事収集（OPENAI_API_KEYは任意。無ければダミー要約で動作）
 python scripts/collect.py
 
 # フィード生成
@@ -170,7 +170,7 @@ cd docs && python -m http.server 8000
 ```
 
 環境変数:
-- `OPENAI_API_KEY` — OpenAI APIキー（必須）
+- `OPENAI_API_KEY` — OpenAI APIキー（任意。未設定ならダミー要約で動作）
 - `OPENAI_MODEL` — モデル名（デフォルト: `gpt-4.1-mini`）
 - `SITE_URL` — 公開サイトのURL（generate_feeds.py用。現状GitHub Pages、移行後は稼働クラウドのURL）
 
