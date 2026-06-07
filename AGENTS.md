@@ -204,17 +204,63 @@ GCP へのデプロイ・自動実行の手順は `DEPLOY.md` を参照。
 
 ## RSSソース
 
-現状はモデルプロバイダ中心。スコープ拡大に伴い、AIニュース全般を扱うソースを追加していく。
+AIニュース全般を対象に、(1) モデルプロバイダ／開発元、(2) AI専門・テック系メディア、
+(3) 研究・開発者向け の3カテゴリで構成する。追加時は事前に取得可否（HTTP 200＋RSS実体あり）を検証する。
+公開RSSが無い／HTMLしか返さないソース（Anthropic, Meta AI, Mistral, Cohere, Stability AI 等）は含めていない。
 
 ```python
 RSS_SOURCES = [
-    {"name": "OpenAI",              "url": "https://openai.com/news/rss.xml"},
-    {"name": "Anthropic",           "url": "https://www.anthropic.com/news/rss.xml"},
-    {"name": "Google DeepMind",     "url": "https://deepmind.google/blog/rss.xml"},
-    {"name": "Hugging Face Blog",   "url": "https://huggingface.co/blog/feed.xml"},
-    {"name": "Hugging Face Papers", "url": "https://huggingface.co/papers/rss"},
+    # モデルプロバイダ／開発元（一次情報）
+    {"name": "OpenAI",                   "url": "https://openai.com/news/rss.xml"},
+    {"name": "Google DeepMind",          "url": "https://deepmind.google/blog/rss.xml"},
+    {"name": "Google AI",                "url": "https://blog.google/technology/ai/rss/"},
+    {"name": "Google Developers Blog",   "url": "https://developers.googleblog.com/feeds/posts/default/?alt=rss"},
+    {"name": "Hugging Face Blog",        "url": "https://huggingface.co/blog/feed.xml"},
+    {"name": "Microsoft AI Blog",        "url": "https://blogs.microsoft.com/ai/feed/"},
+    {"name": "AWS Machine Learning Blog","url": "https://aws.amazon.com/blogs/machine-learning/feed/"},
+    {"name": "NVIDIA Blog",              "url": "https://blogs.nvidia.com/feed/"},
+    {"name": "NVIDIA Developer Blog",    "url": "https://developer.nvidia.com/blog/feed"},
+    # 研究機関・大学・研究ブログ
+    {"name": "Google Research",          "url": "https://research.google/blog/rss/"},
+    {"name": "Microsoft Research",       "url": "https://www.microsoft.com/en-us/research/feed/"},
+    {"name": "MIT News AI",              "url": "https://news.mit.edu/topic/mitartificial-intelligence2-rss.xml"},
+    {"name": "BAIR Blog",                "url": "https://bair.berkeley.edu/blog/feed.xml"},
+    # AI専門・テック系メディア（英語）
+    {"name": "TechCrunch AI",            "url": "https://techcrunch.com/category/artificial-intelligence/feed/"},
+    {"name": "VentureBeat AI",           "url": "https://venturebeat.com/category/ai/feed/"},
+    {"name": "The Verge AI",             "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"},
+    {"name": "Ars Technica AI",          "url": "https://arstechnica.com/ai/feed/"},
+    {"name": "MIT Technology Review AI",  "url": "https://www.technologyreview.com/topic/artificial-intelligence/feed"},
+    {"name": "WIRED AI",                 "url": "https://www.wired.com/feed/tag/ai/latest/rss"},
+    {"name": "The Decoder",              "url": "https://the-decoder.com/feed/"},
+    # 国内：政策・総合媒体
+    {"name": "デジタル庁",                "url": "https://www.digital.go.jp/rss/news.xml"},
+    {"name": "ITmedia AI＋",             "url": "https://rss.itmedia.co.jp/rss/2.0/aiplus.xml"},
+    {"name": "＠IT Smart & Social",      "url": "https://rss.itmedia.co.jp/rss/2.0/ait_smart.xml"},
+    {"name": "Publickey",                "url": "https://www.publickey1.jp/atom.xml"},
+    # 国内：企業技術ブログ（実装知見）
+    {"name": "LINEヤフー Tech Blog",     "url": "https://techblog.lycorp.co.jp/ja/feed/index.xml"},
+    {"name": "Mercari Engineering",      "url": "https://engineering.mercari.com/blog/feed.xml"},
+    {"name": "Recruit Tech Blog",        "url": "https://blog.recruit.co.jp/data/index.xml"},
+    {"name": "BrainPad Blog",            "url": "https://blog.brainpad.co.jp/rss"},
+    {"name": "DeNA Engineering",         "url": "https://engineering.dena.com/index.xml"},
+    {"name": "NTT Communications Engineers' Blog", "url": "https://engineers.ntt.com/feed"},
+    # 研究・開発者向け（個人）
+    {"name": "Simon Willison's Weblog",  "url": "https://simonwillison.net/atom/everything/"},
 ]
 ```
+
+国内総合媒体（デジタル庁・＠IT 等）や企業技術ブログは非AI記事も混ざるため、`SYSTEM_PROMPT`
+のAIニュース判定（`is_model_related`）でフィルタする前提。要約アグリゲータ（MarkTechPost 等）や
+高ノイズの総合媒体（ASCII/CNET/GIGAZINE）、コミュニティ系（Zenn/Qiita/note）は、URLベースの
+重複排除しか無い現状では重複・ノイズが増えるため未採用。産総研(AIST)はRSSのフィードURLを
+公式ページから確定できず（JSレンダリング）、確証が取れるまで未採用とした。
+
+新着は全ソースをまとめてからソース順に処理するのではなく、**ソースごとにラウンドロビン**で
+取り込む（先頭ソースだけで `MAX_NEW_ARTICLES` を使い切らないため）。
+`SYSTEM_PROMPT` のフィルタは「モデル関連のみ」から **AIニュース全般** に一般化済み。
+互換性のため掲載可否フラグは `is_model_related` という名前のまま（true=掲載、false=対象外）で、
+特定モデルの話題でなければ `model_type="Other"` / `model_name="Unknown"` とする。
 
 ---
 
