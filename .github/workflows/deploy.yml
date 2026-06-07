@@ -44,7 +44,10 @@ jobs:
             job:
               - 'scripts/**'
               - 'Dockerfile'
+              - '.dockerignore'    # ビルドコンテキストに影響するため再ビルド対象
               - 'requirements*.txt'
+              - 'templates/**'     # generate_pages.py のテンプレ（イメージに COPY）
+              - 'assets/**'        # サイト静的物（イメージに COPY）
               - 'docs/**'   # docs/ はイメージにも COPY されるためジョブも再ビルド対象
 
   deploy-site:
