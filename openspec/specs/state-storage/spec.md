@@ -2,14 +2,14 @@
 
 ## Purpose
 
-収集状態 `models.json` を GCS に永続化し、重複排除・件数上限を維持しつつ、非公開バケットでローカル/クラウド双方から同一スクリプトが動作できるようにする。
+収集状態 `models.json` を公開GCSバケットの `data/models.json` に永続化し、重複排除・件数上限を維持しつつ、これをそのまま配信に用い、ローカル/クラウド双方から同一スクリプトが動作できるようにする。
 
 ## Requirements
 
 ### Requirement: GCS への状態永続化
 
-システムは収集状態 `models.json` を GCS バケットに永続化 SHALL し、git リポジトリには保存 SHALL NOT する。
-実行ごとにジョブは GCS から既存の `models.json` を取得し、更新後に GCS へ書き戻す（download-run-upload）。
+システムは収集状態を公開GCSバケットの `data/models.json`（既定キー、`GCS_OBJECT` で変更可）に永続化 SHALL し、git リポジトリには保存 SHALL NOT する。
+実行ごとにジョブは GCS から既存の状態を取得し、更新後に GCS へ書き戻す（download-run-upload）。書き戻した状態はそのまま公開配信される。
 
 #### Scenario: 既存状態を引き継いで追記する
 
@@ -35,14 +35,19 @@
 - **WHEN** 追記後の総件数が上限を超える
 - **THEN** 最新分のみを残して上限件数に切り詰めて保存する
 
-### Requirement: 状態バケットの非公開
+### Requirement: 状態バケットは公開配信を兼ねる
 
-システムは状態保存用 GCS バケットを非公開 SHALL とし、アクセスをサービスアカウント経由の読み書きに限定 SHALL する。一般利用者への配信は Firebase Hosting に一本化 SHALL し、GCS の直URL配信は提供 SHALL NOT する。
+システムは状態保存用 GCS バケットを公開読み取り可能 SHALL とし、`data/models.json` を含む配信物をバケットから直接 HTTPS 配信 SHALL する。書き込み（状態更新）はサービスアカウント経由に限定 SHALL し、公開する配信物に機密を含め SHALL NOT する。
 
-#### Scenario: バケットへ匿名アクセスできない
+#### Scenario: 状態が公開URLで取得できる
 
-- **WHEN** 認証情報なしで GCS バケットのオブジェクトに直接アクセスする
-- **THEN** アクセスは拒否され、公開配信は Firebase 経由でのみ提供される
+- **WHEN** 利用者が `https://storage.googleapis.com/<bucket>/data/models.json` にアクセスする
+- **THEN** 認証なしで最新の状態（機密を含まない）が取得できる
+
+#### Scenario: 書き込みは認証が必要
+
+- **WHEN** 認証情報なしで GCS バケットのオブジェクトを書き換えようとする
+- **THEN** 書き込みは拒否され、更新はサービスアカウント経由でのみ可能である
 
 ### Requirement: 入出力パスの設定可能化
 

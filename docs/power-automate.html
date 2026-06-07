@@ -145,7 +145,7 @@
   <header>
     <p><a href="./index.html">LLM Model Watch Feed</a></p>
     <h1>Power Automate連携手順書</h1>
-    <p>GitHub Pagesで公開したRSSフィードをPower Automateで監視し、Microsoft Teamsへ通知するための詳細手順です。</p>
+    <p>公開GCSバケットで配信しているRSSフィードをPower Automateで監視し、Microsoft Teamsへ通知するための詳細手順です。</p>
   </header>
 
   <main>
@@ -153,7 +153,7 @@
       <h2>目次</h2>
       <div class="toc">
         <a href="#overview">1. 全体像</a>
-        <a href="#pages">2. GitHub Pagesの公開確認</a>
+        <a href="#pages">2. 公開URLの確認</a>
         <a href="#feed">3. RSSフィードURLの選択</a>
         <a href="#flow">4. Power Automateフロー作成</a>
         <a href="#message">5. Teams投稿メッセージ設定</a>
@@ -164,39 +164,35 @@
 
     <section id="overview">
       <h2>1. 全体像</h2>
-      <p>このアプリは、LLMモデル関連ニュースを収集して <code>docs/feeds/*.xml</code> にRSSフィードを生成します。GitHub Pagesで <code>docs/</code> を公開すると、Power AutomateのRSSトリガーからフィードを監視できます。</p>
+      <p>このアプリは、LLMモデル関連ニュースを収集して <code>feeds/*.xml</code> にRSSフィードを生成し、公開GCSバケットから配信します。Power AutomateのRSSトリガーからこのフィードを監視できます。</p>
       <ol>
-        <li>GitHub Actionsが定期的に記事を収集し、RSSを生成します。</li>
-        <li>GitHub Pagesが <code>docs/</code> 配下のHTMLとRSSを公開します。</li>
+        <li>Cloud Scheduler が毎日 Cloud Run Job をトリガーし、記事を収集してRSSを生成します。</li>
+        <li>生成された <code>data/models.json</code> と <code>feeds/*.xml</code> が公開GCSバケットへ書き込まれ、そのままHTTPS配信されます。</li>
         <li>Power AutomateがRSSの新着アイテムを検知します。</li>
         <li>Microsoft Teamsの指定チャネルへメッセージを投稿します。</li>
       </ol>
       <div class="callout">
-        想定する公開URLは <code>https://{GitHubユーザー名}.github.io/{リポジトリ名}/</code> です。このリポジトリ名が <code>llm-watch-feed</code> の場合、RSSの例は <code>https://{GitHubユーザー名}.github.io/llm-watch-feed/feeds/all.xml</code> です。
+        公開URLは <code>https://storage.googleapis.com/{バケット名}/</code> です。RSSの例は <code>https://storage.googleapis.com/{バケット名}/feeds/all.xml</code> です（独自ドメイン設定後は <code>https://news.example.com/feeds/all.xml</code> のような形になります）。
       </div>
     </section>
 
     <section id="pages">
-      <h2>2. GitHub Pagesの公開確認</h2>
-      <h3>2.1 Pagesを有効化する</h3>
+      <h2>2. 公開URLの確認</h2>
+      <h3>2.1 配信を確認する</h3>
       <ol>
-        <li>GitHubでこのリポジトリを開きます。</li>
-        <li><strong>Settings</strong> を開きます。</li>
-        <li>左メニューの <strong>Pages</strong> を開きます。</li>
-        <li><strong>Build and deployment</strong> のSourceで <strong>Deploy from a branch</strong> を選択します。</li>
-        <li>Branchで <strong>main</strong>、Folderで <strong>/docs</strong> を選択します。</li>
-        <li><strong>Save</strong> を押します。</li>
+        <li>デプロイ手順（<code>DEPLOY.md</code>）に従い、公開GCSバケットとCloud Run Jobを構築します。</li>
+        <li>ニュース更新ジョブが1回実行されると、<code>data/models.json</code> と <code>feeds/*.xml</code> がバケットへ配信されます。</li>
       </ol>
 
       <h3>2.2 公開URLへアクセスする</h3>
       <ol>
-        <li>Pages設定画面に表示される公開URLを開きます。</li>
+        <li>公開URL <code>https://storage.googleapis.com/{バケット名}/index.html</code> を開きます。</li>
         <li>トップページに「Power Automate連携手順書」と「公開RSSフィード」が表示されることを確認します。</li>
         <li><code>/feeds/all.xml</code> を開き、XMLが表示されることを確認します。</li>
       </ol>
 
       <div class="warning callout">
-        Power Automateには、ローカルファイルや <code>file://</code> のURLではなく、GitHub Pagesで公開された <code>https://</code> のRSS URLを登録してください。
+        Power Automateには、ローカルファイルや <code>file://</code> のURLではなく、公開された <code>https://</code> のRSS URLを登録してください。
       </div>
     </section>
 
@@ -216,8 +212,8 @@
           <tr><td>Multimodal</td><td><code>/feeds/multimodal.xml</code></td><td>音声、画像、動画などのマルチモーダル更新を追いたい場合</td></tr>
         </tbody>
       </table>
-      <p>公開URLが <code>https://example.github.io/llm-watch-feed/</code> の場合、AllフィードのURLは次のようになります。</p>
-      <pre><code>https://example.github.io/llm-watch-feed/feeds/all.xml</code></pre>
+      <p>公開URLが <code>https://storage.googleapis.com/{バケット名}/</code> の場合、AllフィードのURLは次のようになります。</p>
+      <pre><code>https://storage.googleapis.com/{バケット名}/feeds/all.xml</code></pre>
     </section>
 
     <section id="flow">
@@ -235,8 +231,8 @@
 
       <h3>4.2 RSSトリガーを設定する</h3>
       <ol>
-        <li><strong>RSS フィード URL</strong> に、GitHub Pagesで公開されたRSS URLを入力します。</li>
-        <li>例: <code>https://example.github.io/llm-watch-feed/feeds/all.xml</code></li>
+        <li><strong>RSS フィード URL</strong> に、公開されたRSS URLを入力します。</li>
+        <li>例: <code>https://storage.googleapis.com/{バケット名}/feeds/all.xml</code></li>
         <li>保存後にフローが有効化されていることを確認します。</li>
       </ol>
       <div class="callout">
@@ -298,19 +294,19 @@ Feed summary</code></pre>
         <li>画面右上の <strong>保存</strong> を押します。</li>
         <li><strong>テスト</strong> を押します。</li>
         <li>手動テストを選択します。</li>
-        <li>GitHub Actionsの <strong>Collect LLM Model Feed</strong> ワークフローを手動実行するか、新しいRSSアイテムが生成されるまで待ちます。</li>
+        <li>Cloud Run Job（ニュース更新ジョブ）を手動実行するか、新しいRSSアイテムが生成されるまで待ちます。</li>
         <li>フローの実行履歴に成功ログが出ることを確認します。</li>
         <li>Teamsの対象チャネルにメッセージが投稿されることを確認します。</li>
       </ol>
 
       <h3>6.2 運用前チェックリスト</h3>
       <ul class="checklist">
-        <li>GitHub Pagesのトップページが開ける。</li>
+        <li>公開URLのトップページが開ける。</li>
         <li>登録したRSS URLをブラウザで開くとXMLが表示される。</li>
         <li>Power AutomateのRSSトリガーに <code>https://</code> のURLを登録している。</li>
         <li>Teams投稿先のTeamとChannelが正しい。</li>
         <li>フロー所有者にTeams投稿権限がある。</li>
-        <li>GitHub ActionsのSecretsに <code>OPENAI_API_KEY</code> が設定されている。</li>
+        <li>Cloud Run Job が正常に実行され、フィードが更新されている。</li>
       </ul>
     </section>
 
@@ -323,7 +319,7 @@ Feed summary</code></pre>
         <tbody>
           <tr>
             <td>Power AutomateがRSSを読み込めない</td>
-            <td>RSS URLがGitHub Pagesの <code>https://</code> URLになっているか</td>
+            <td>RSS URLが公開された <code>https://</code> URLになっているか</td>
             <td>トップページのRSS URLをコピーし直して登録します。</td>
           </tr>
           <tr>
@@ -333,8 +329,8 @@ Feed summary</code></pre>
           </tr>
           <tr>
             <td>新しい記事が通知されない</td>
-            <td>GitHub Actionsが成功しているか、RSSに新しい <code>item</code> があるか</td>
-            <td>Actionsを手動実行し、<code>docs/feeds/all.xml</code> の更新日時を確認します。</td>
+            <td>Cloud Run Job が成功しているか、RSSに新しい <code>item</code> があるか</td>
+            <td>ジョブを手動実行し、<code>feeds/all.xml</code> の更新日時を確認します。</td>
           </tr>
           <tr>
             <td>同じ内容が複数回通知される</td>
@@ -354,7 +350,7 @@ Feed summary</code></pre>
         <li><a href="https://learn.microsoft.com/en-us/connectors/rss/" target="_blank" rel="noopener">Microsoft Learn: RSS connector</a></li>
         <li><a href="https://learn.microsoft.com/en-us/power-automate/teams/send-a-message-in-teams" target="_blank" rel="noopener">Microsoft Learn: Send a message in Teams using Power Automate</a></li>
         <li><a href="https://learn.microsoft.com/en-gb/connectors/teams/" target="_blank" rel="noopener">Microsoft Learn: Microsoft Teams connector</a></li>
-        <li><a href="https://docs.github.com/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site" target="_blank" rel="noopener">GitHub Docs: Configuring a publishing source for your GitHub Pages site</a></li>
+        <li><a href="https://cloud.google.com/storage/docs/hosting-static-website" target="_blank" rel="noopener">Google Cloud: Hosting a static website (Cloud Storage)</a></li>
       </ul>
     </section>
   </main>
