@@ -192,6 +192,98 @@ curl -s -D - -o /dev/null -H "Origin: https://${PROJECT_ID}.web.app" \
 3. Firebase Hosting は画面のみをデプロイ（`deploy_site.sh`）。
 4. ジョブの `FIREBASE_PROJECT` 環境変数は不要（削除）。
 
+## 9. CI 自動デプロイ（main マージで自動・GitHub Actions + WIF）
+
+`main` にマージ（push）されると `.github/workflows/deploy.yml` が走り、変更箇所に応じて自動デプロイする。
+
+- `docs/**` / `firebase.json` / `.firebaserc` の変更 → **Firebase Hosting**（画面）をデプロイ
+- `scripts/**` / `Dockerfile` / `requirements*.txt` / `docs/**` の変更 → **Cloud Run Job** のイメージを再ビルドしてジョブを更新
+
+認証は **Workload Identity Federation（鍵レス）**。SA の JSON キーは保存しない。以下は初回のみの準備。
+
+### 9.1 変数
+
+```bash
+export PROJECT_ID="ai-watch-feed"
+export GH_REPO="rararapi/llm-watch-feed"      # owner/repo
+export POOL="github"
+export PROVIDER="github"
+export DEPLOY_SA="gha-deployer"
+export DEPLOY_SA_EMAIL="${DEPLOY_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
+export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+gcloud config set project "$PROJECT_ID"
+gcloud services enable iamcredentials.googleapis.com sts.googleapis.com
+```
+
+### 9.2 デプロイ用サービスアカウント + 権限
+
+```bash
+gcloud iam service-accounts create "$DEPLOY_SA" --display-name="GitHub Actions Deployer"
+
+# Firebase Hosting デプロイ
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role="roles/firebasehosting.admin"
+# firebase CLI のプロジェクト解決に必要
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role="roles/serviceusage.serviceUsageConsumer"
+
+# Cloud Build でイメージをビルド/プッシュ
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role="roles/cloudbuild.builds.editor"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role="roles/artifactregistry.writer"
+# gcloud builds submit のソースアップロード先（ステージングバケット）
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role="roles/storage.admin"
+
+# Cloud Run Job の更新
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role="roles/run.developer"
+# ジョブが使うランタイム SA を指定できるように（actAs）
+gcloud iam service-accounts add-iam-policy-binding \
+  "llm-watch-job@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --member="serviceAccount:${DEPLOY_SA_EMAIL}" --role="roles/iam.serviceAccountUser"
+```
+
+### 9.3 Workload Identity Pool / Provider（GitHub 連携）
+
+```bash
+gcloud iam workload-identity-pools create "$POOL" \
+  --location="global" --display-name="GitHub Actions"
+
+gcloud iam workload-identity-pools providers create-oidc "$PROVIDER" \
+  --location="global" --workload-identity-pool="$POOL" \
+  --display-name="GitHub OIDC" \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --attribute-condition="assertion.repository=='${GH_REPO}'"
+
+# このリポジトリからのトークンだけが DEPLOY_SA を借用できるよう束縛
+gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA_EMAIL" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/attribute.repository/${GH_REPO}"
+```
+
+### 9.4 GitHub Secrets を設定
+
+```bash
+# Provider のリソース名（GCP_WIF_PROVIDER に入れる値）
+echo "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"
+
+# gh CLI があればそのまま登録できる
+gh secret set GCP_WIF_PROVIDER --repo "$GH_REPO" \
+  --body "projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"
+gh secret set GCP_DEPLOY_SA --repo "$GH_REPO" --body "$DEPLOY_SA_EMAIL"
+```
+
+| Secret | 値 |
+|--------|----|
+| `GCP_WIF_PROVIDER` | `projects/<番号>/locations/global/workloadIdentityPools/github/providers/github` |
+| `GCP_DEPLOY_SA` | `gha-deployer@ai-watch-feed.iam.gserviceaccount.com` |
+
+> 設定後、`main` への次回マージから自動デプロイが有効になる。手動デプロイ（`deploy_site.sh` /
+> `gcloud builds submit`）も引き続き使える。動作確認は GitHub の Actions タブを見る。
+
 ## ロールバック
 
 `gcloud scheduler jobs pause "${JOB}-daily" --location="$REGION"` で毎日更新を停止できる。
