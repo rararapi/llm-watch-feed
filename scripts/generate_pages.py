@@ -121,9 +121,11 @@ def prepare(a: dict, now: datetime) -> dict:
     a["_group"] = _recency_group(a.get("published_at", ""), now)
     a["_tags_attr"] = " ".join(str(t) for t in tags).lower()
     a["_share_text"] = quote(title)
-    # サムネ: og:image があれば実画像、無ければソース名から決めた色のプレースホルダ
+    # サムネ: AI生成画像(image_generated_url) → 記事元OG画像(image_url) → プレースホルダ の順。
+    # og:image(SNS共有) は外部スクレイパ互換を優先し従来どおり OG画像 or 既定画像のまま。
     a["image_url"] = a.get("image_url") or None
-    a["_og_image"] = a.get("image_url") or f"{SITE_URL}/assets/img/og-default.png"
+    a["_thumb"] = a.get("image_generated_url") or a["image_url"] or None
+    a["_og_image"] = a["image_url"] or f"{SITE_URL}/assets/img/og-default.png"
     source = a.get("source") or a.get("provider") or "AI"
     a["_hue"] = int(hashlib.md5(source.encode("utf-8")).hexdigest()[:6], 16) % 360
     return a

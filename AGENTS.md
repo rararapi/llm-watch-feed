@@ -52,6 +52,13 @@ scripts/collect.py
   - 1回の実行で最大MAX_NEW_ARTICLES=10件を処理
   - models.jsonは最大MAX_TOTAL_ARTICLES=500件に制限
 
+scripts/generate_images.py
+  - models.json の重要度A・image_generated_url未設定の記事に概念的AIアイキャッチ画像を生成
+  - Vertex AI（Gemini 2.5 Flash Image）を ADC で利用。2段階（テキスト→視覚プロンプト→画像）
+  - 公開GCSバケットの images/<id>.webp へ不変キャッシュ付きでアップロードし image_generated_url 等を書き戻す
+  - image_url(OG画像)とは別フィールド。GCP_PROJECT/GCS_BUCKET未設定・生成失敗でも画像なしで完走
+    （冪等＝blob.exists()で既存はバックフィル・IMAGE_MAX_PER_RUNで枚数制限）
+
 scripts/generate_feeds.py
   - models.json（MODELS_JSON_PATH）を読み込む
   - 6種類のRSS XMLを生成（出力先は環境変数 FEEDS_DIR、既定 docs/feeds/）
@@ -68,8 +75,8 @@ scripts/generate_pages.py
 
 scripts/gcs_sync.py / scripts/run_job.sh / scripts/deploy_site.sh
   - run_job.sh が Cloud Run Job のエントリポイント（ニュース更新ジョブ）
-    GCSからmodels.json取得 → collect → generate_feeds → generate_pages →
-    GCSへ data/models.json・feeds/・サイト(index/articles/assets) を書き込み
+    GCSからmodels.json取得 → collect → generate_images → generate_feeds → generate_pages →
+    GCSへ data/models.json・feeds/・サイト(index/articles/assets) を書き込み（画像は images/ へ直接）
   - gcs_sync.py のコマンド: download / upload(=配信データ) / publish-feeds /
     publish-pages(=生成サイトを配信) /（publish-site はGCS配信時の予備）
   - deploy_site.sh は画面(index/subscribe/assets)を generate_pages.py で再生成してから
@@ -137,6 +144,9 @@ GitHub Pages から **GCP** へ移行済み。構築手順は `DEPLOY.md`。
   "published_at": "2026-06-04T09:00:00+00:00",
   "collected_at": "2026-06-04T09:05:00+00:00",
   "image_url": "https://example.com/og-image.jpg",
+  "image_generated_url": "https://storage.googleapis.com/ai-watch-feed-llm-watch-public/images/<id>.webp",
+  "image_generated_alt": "画像内容を説明する日本語の代替テキスト",
+  "image_generated_prompt": "（任意・デバッグ用）画像生成に使った英語の視覚プロンプト",
 
   "is_model_related": true,
   "model_relevance_reason": "新しいLLMモデルの発表であるため",
@@ -155,7 +165,12 @@ GitHub Pages から **GCP** へ移行済み。構築手順は `DEPLOY.md`。
 
 `model_name` が不明な場合は `"Unknown"`。`image_url` はサムネ用に元記事の og:image を
 取得したもの（`collect.py` が新着収集時に付与。既存分は `backfill_images.py` で補完）。
-取得できなければ `null`。画面側は画像が無い場合ソース名由来の色のプレースホルダを表示する。
+取得できなければ `null`。
+
+`image_generated_url` / `image_generated_alt` / `image_generated_prompt` は **AI生成アイキャッチ画像**
+（`generate_images.py` が重要度Aの記事に付与。Vertex AI の Gemini 2.5 Flash Image）。画像は公開GCSバケットの
+`images/<id>.webp`（不変キャッシュ）に保存。サムネは **AI画像(`image_generated_url`) → 元記事OG画像(`image_url`)
+→ ソース名由来の色のプレースホルダ** の優先順で表示する（`generate_pages.py` の `_thumb` と `macros.html`）。
 
 ---
 
@@ -200,6 +215,9 @@ pip install -r requirements.txt
 #     export GCP_PROJECT=<your-project-id>   # .env でも可
 python scripts/collect.py
 
+# AI画像生成（重要度Aの記事。GCP_PROJECT・GCS_BUCKET・ADCが必要。無ければ画像なしで完走）
+python scripts/generate_images.py
+
 # フィード生成
 python scripts/generate_feeds.py
 
@@ -221,7 +239,11 @@ GCP へのデプロイ・自動実行の手順は `DEPLOY.md` を参照。
 環境変数:
 - `GCP_PROJECT` — Vertex AI のプロジェクトID（未設定ならダミー要約で動作）。認証はADCで行いAPIキーは不要
 - `VERTEX_LOCATION` — Vertex AI のリージョン（デフォルト: `us-central1`）
-- `VERTEX_MODEL` — Gemini モデル名（デフォルト: `gemini-2.5-flash`）
+- `VERTEX_MODEL` — Gemini モデル名（デフォルト: `gemini-2.5-flash`。視覚プロンプト生成にも利用）
+- `VERTEX_IMAGE_MODEL` — AI画像生成モデル名（デフォルト: `gemini-2.5-flash-image`）
+- `IMAGE_MIN_IMPORTANCE` — AI画像生成の対象重要度（デフォルト: `A`）
+- `IMAGE_MAX_PER_RUN` — 1回の実行で生成する最大枚数（デフォルト: `5`）
+- `IMAGE_BASE_URL` — AI画像URLのベース（デフォルト: `https://storage.googleapis.com/<GCS_BUCKET>`）
 - `SITE_URL` — 配信物の絶対URL基準（generate_feeds.py のフィード自己リンク＋generate_pages.py の
   OGP/canonical/asset/内部リンク。＝記事が配信される公開GCSオリジン。当面はバケットURL、独自ドメイン設定後はそのURL）
 - `SITE_NAME` / `SITE_TAGLINE` — サイトのブランド表記（generate_pages.py。既定 `AI News Watch` / タグライン）

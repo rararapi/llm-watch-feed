@@ -1,4 +1,8 @@
 # Cloud Run Job 用の追加依存。
-# ベース(requirements.txt)は GCS を含めず軽量に保ち、ジョブ実行時のみ GCS クライアントを足す。
+# ベース(requirements.txt)は GCS を含めず軽量に保ち、ジョブ実行時のみ追加分を足す。
 -r requirements.txt
 google-cloud-storage==2.18.2
+# AI画像生成（generate_images.py）。Gemini 2.5 Flash Image は google-genai 経由で扱い、
+# 画像は WebP に変換するため Pillow を使う。いずれもジョブ実行時のみ必要。
+google-genai>=1.0.0
+Pillow>=10.4.0

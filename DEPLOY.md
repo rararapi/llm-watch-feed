@@ -9,9 +9,10 @@
 
 ```
 Cloud Scheduler ─毎日─▶ Cloud Run Job (run_job.sh)
-   1.GCS→models.json取得  2.collect.py  3.generate_feeds.py  4.generate_pages.py
-   5.data/models.json をGCSへ保存  6.feeds/ をGCSへ配信  7.サイト(index/articles/assets)をGCSへ配信
-        └─ 公開GCSバケット（data/ + feeds/ + index.html/subscribe.html/articles/ + assets/ をHTTPS配信, CORS有効）
+   1.GCS→models.json取得  2.collect.py  3.generate_images.py  4.generate_feeds.py  5.generate_pages.py
+   6.data/models.json をGCSへ保存  7.feeds/ をGCSへ配信  8.サイト(index/articles/assets)をGCSへ配信
+        └─ 公開GCSバケット（data/ + feeds/ + images/ + index.html/subscribe.html/articles/ + assets/ をHTTPS配信, CORS有効）
+           AI画像は generate_images.py が images/<id>.webp へ直接アップロード（不変キャッシュ・重要度A）
 
 Firebase Hosting ──▶ index.html / subscribe.html / assets / power-automate.html（画面の入口）
    記事ページ(articles/<id>.html)・データ・フィードは GCS の絶対URLを参照
@@ -126,9 +127,13 @@ gcloud builds submit --tag "$IMAGE"
 gcloud run jobs create "$JOB" \
   --image="$IMAGE" --region="$REGION" \
   --service-account="$SA_EMAIL" \
-  --set-env-vars="GCS_BUCKET=${BUCKET},SITE_URL=${SITE_URL},GCP_PROJECT=${PROJECT_ID},VERTEX_LOCATION=us-central1,VERTEX_MODEL=gemini-2.5-flash" \
-  --max-retries=1 --task-timeout=600
+  --set-env-vars="GCS_BUCKET=${BUCKET},SITE_URL=${SITE_URL},GCP_PROJECT=${PROJECT_ID},VERTEX_LOCATION=us-central1,VERTEX_MODEL=gemini-2.5-flash,VERTEX_IMAGE_MODEL=gemini-2.5-flash-image,IMAGE_MIN_IMPORTANCE=A,IMAGE_MAX_PER_RUN=5" \
+  --max-retries=1 --task-timeout=1800
 # 既存更新時は `gcloud run jobs update "$JOB" ...`（FIREBASE_PROJECT は使わない）
+# AI画像生成は GCS_BUCKET（公開バケット）と roles/aiplatform.user で動作。images/<id>.webp に
+# 不変キャッシュ付きで配信され、image_generated_url 経由でサムネ表示される（AI画像→OG画像→プレースホルダ）。
+# 画像モデルは分間クォータ(429)で律速されることがあるため task-timeout は余裕を持たせる。
+# VERTEX_IMAGE_MODEL が使えない/未設定なら画像なしで完走する。
 ```
 
 ## 4.3 手動実行で疎通確認
