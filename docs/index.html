@@ -212,7 +212,7 @@
     <p>LLMモデル関連ニュースをRSSとして公開し、Power AutomateからMicrosoft Teamsへ通知できる静的フィードです。</p>
     <nav aria-label="主要リンク">
       <a href="./power-automate.html">Power Automate連携手順書</a>
-      <a class="secondary" href="./feeds/all.xml">RSS: All</a>
+      <a class="secondary" id="nav-rss-all" href="#">RSS: All</a>
     </nav>
   </header>
 
@@ -261,6 +261,10 @@
   </footer>
 
   <script>
+    // データ(models.json)とRSSフィードは公開GCSバケットが配信する（方式A）。
+    // この画面(HTML/JS)は Firebase Hosting で配信されるため、データ/フィードは
+    // 同一オリジンではなく GCS の絶対URLから取得する（バケット側にCORS設定が必要）。
+    const DATA_ORIGIN = "https://storage.googleapis.com/ai-watch-feed-llm-watch-public";
     const FEEDS = [
       { name: "All", file: "feeds/all.xml", desc: "重要度AまたはBのすべてのLLMモデル関連情報" },
       { name: "Major Models", file: "feeds/major-models.xml", desc: "重要度Aの主要モデル情報" },
@@ -269,12 +273,6 @@
       { name: "Coding", file: "feeds/coding.xml", desc: "コーディング性能やコード生成モデルに関する情報" },
       { name: "Multimodal", file: "feeds/multimodal.xml", desc: "マルチモーダル、音声、動画モデルに関する情報" },
     ];
-
-    function getBaseUrl() {
-      const path = window.location.pathname;
-      const dir = path.endsWith(".html") ? path.slice(0, path.lastIndexOf("/")) : path.replace(/\/$/, "");
-      return window.location.origin + dir;
-    }
 
     function copyText(text, button) {
       const done = () => {
@@ -326,7 +324,7 @@
 
       if (visible.length === 0) {
         status.textContent = "";
-        wrap.innerHTML = '<div class="empty-state">まだ表示できるモデル情報がありません。GitHub Actionsを実行するとRSSと一覧が更新されます。</div>';
+        wrap.innerHTML = '<div class="empty-state">まだ表示できるモデル情報がありません。収集ジョブが実行されるとRSSと一覧が更新されます。</div>';
         return;
       }
 
@@ -360,17 +358,19 @@
     async function loadArticles() {
       const status = document.getElementById("status");
       try {
-        const response = await fetch("./data/models.json");
+        const response = await fetch(`${DATA_ORIGIN}/data/models.json`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         renderArticles(await response.json());
       } catch (error) {
         status.textContent = `読み込みエラー: ${error.message}`;
         document.getElementById("articles-wrap").innerHTML =
-          '<div class="empty-state">GitHub PagesまたはローカルHTTPサーバー経由でアクセスしてください。file:// ではデータを読み込めません。</div>';
+          '<div class="empty-state">公開URLまたはローカルHTTPサーバー経由でアクセスしてください。file:// ではデータを読み込めません。</div>';
       }
     }
 
-    renderFeeds(getBaseUrl());
+    const navAll = document.getElementById("nav-rss-all");
+    if (navAll) navAll.href = `${DATA_ORIGIN}/feeds/all.xml`;
+    renderFeeds(DATA_ORIGIN);
     loadArticles();
   </script>
 </body>

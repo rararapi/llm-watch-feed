@@ -1,7 +1,13 @@
-"""Collect LLM model news from RSS sources and analyze with OpenAI.
+"""Collect LLM model news from RSS sources and analyze with Vertex AI (Gemini).
 
-OPENAI_API_KEY があれば OpenAI で要約・分析し、無ければダミー文章を埋め込む
-（ダミーモード）。APIキー無しでもパイプライン全体が動くようにするため。
+GCP_PROJECT が設定され ADC（Application Default Credentials）で認証できれば
+Vertex AI で要約・分析し、利用できなければダミー文章を埋め込む（ダミーモード）。
+認証情報が無くてもパイプライン全体が動くようにするため。
+
+ローカルからも実行できる:
+  gcloud auth application-default login   # 一度だけ
+  export GCP_PROJECT=<your-project-id>    # .env でも可
+  python scripts/collect.py
 """
 
 import calendar
@@ -15,8 +21,9 @@ from typing import Optional
 
 import feedparser
 import requests
+import vertexai
 from dotenv import load_dotenv
-from openai import OpenAI
+from vertexai.generative_models import GenerationConfig, GenerativeModel
 
 load_dotenv()
 
@@ -168,11 +175,11 @@ def fetch_source(source: dict) -> list[dict]:
         return []
 
 
-DUMMY_NOTICE = "（OPENAI_API_KEY未設定のため自動生成されたダミー文章です）"
+DUMMY_NOTICE = "（Vertex AI未設定のため自動生成されたダミー文章です）"
 
 
 def dummy_analysis(article: dict) -> dict:
-    """APIキーが無いときに埋め込むダミー分析結果。
+    """Vertex AI を利用できないときに埋め込むダミー分析結果。
 
     要約はLLMを使わないため、記事の概要(excerpt)またはタイトルを流用しつつ、
     ダミーである旨を明示する。全件を取り込めるよう is_model_related は True とする。
@@ -193,7 +200,17 @@ def dummy_analysis(article: dict) -> dict:
     }
 
 
-def analyze(client: OpenAI, model: str, article: dict) -> Optional[dict]:
+def _strip_json_fence(text: str) -> str:
+    """まれに ```json ... ``` で包んで返ってくる場合に備えて中身だけ取り出す。"""
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[-1] if "\n" in t else t
+        if t.endswith("```"):
+            t = t[: -3]
+    return t.strip()
+
+
+def analyze(model: GenerativeModel, article: dict) -> Optional[dict]:
     user_content = (
         f"タイトル: {article['title']}\n"
         f"ソース: {article['source']}\n"
@@ -201,16 +218,8 @@ def analyze(client: OpenAI, model: str, article: dict) -> Optional[dict]:
         f"概要: {article['excerpt'] or '(なし)'}"
     )
     try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=0,
-            response_format={"type": "json_object"},
-        )
-        return json.loads(resp.choices[0].message.content)
+        resp = model.generate_content(user_content)
+        return json.loads(_strip_json_fence(resp.text))
     except json.JSONDecodeError as e:
         logger.warning(f"JSON parse failed for '{article['title']}': {e}")
         return None
@@ -220,18 +229,34 @@ def analyze(client: OpenAI, model: str, article: dict) -> Optional[dict]:
 
 
 def main() -> None:
-    api_key = os.environ.get("OPENAI_API_KEY")
-    use_llm = bool(api_key)
-    model = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
+    project = os.environ.get("GCP_PROJECT")
+    location = os.environ.get("VERTEX_LOCATION", "us-central1")
+    model_name = os.environ.get("VERTEX_MODEL", "gemini-2.5-flash")
 
-    client: Optional[OpenAI] = None
-    if use_llm:
-        client = OpenAI(api_key=api_key)
-        logger.info(f"Using model: {model}")
+    # Vertex AI を ADC で初期化。GCP_PROJECT 未設定や認証不可なら
+    # 例外を捕捉してダミーモードへフォールバックし、ジョブ全体は完走させる。
+    model: Optional[GenerativeModel] = None
+    if project:
+        try:
+            vertexai.init(project=project, location=location)
+            model = GenerativeModel(
+                model_name,
+                system_instruction=SYSTEM_PROMPT,
+                generation_config=GenerationConfig(
+                    temperature=0,
+                    response_mime_type="application/json",
+                ),
+            )
+            logger.info(f"Using Vertex AI model: {model_name} ({project}/{location})")
+        except Exception as e:
+            logger.warning(f"Vertex AI init failed ({e}). Falling back to DUMMY mode.")
+            model = None
     else:
         logger.warning(
-            "OPENAI_API_KEY is not set. Running in DUMMY mode (placeholder summaries)."
+            "GCP_PROJECT is not set. Running in DUMMY mode (placeholder summaries)."
         )
+
+    use_llm = model is not None
 
     existing = load_existing()
     seen_urls = {a["url"] for a in existing}
@@ -250,7 +275,7 @@ def main() -> None:
     added = 0
     for article in new_articles:
         logger.info(f"Analyzing: {article['title'][:70]}")
-        result = analyze(client, model, article) if use_llm else dummy_analysis(article)
+        result = analyze(model, article) if use_llm else dummy_analysis(article)
         if not result:
             logger.warning("  -> Skipped (analysis failed)")
             continue
