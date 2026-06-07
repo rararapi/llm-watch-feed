@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}RSS購読・Teams連携 | {{ site_name }}{% endblock %}
+{% block description %}{{ site_name }} のRSSフィードURL一覧と、Power Automate を使った Microsoft Teams への通知連携手順。{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb"><a href="{{ page_url('index.html') }}">← ニュース一覧へ</a></nav>
+
+<section>
+  <h1 class="intro__title">RSSで購読する</h1>
+  <p class="intro__lead">用途に合わせたRSSフィードを公開しています。お使いのRSSリーダーや通知ツールにURLを登録してください。</p>
+</section>
+
+<section>
+  <h2 class="section-title">公開RSSフィード</h2>
+  {% include "partials/_feeds.html" %}
+</section>
+
+<section class="notice">
+  <h2 class="section-title">Microsoft Teams へ通知（Power Automate）</h2>
+  <p>RSSフィードを Power Automate に登録すると、新着を Microsoft Teams に自動投稿できます。フィードURLの選び方、フロー作成、投稿メッセージ例、テスト、トラブルシュートまでを手順書にまとめています。</p>
+  <p><a class="btn" href="{{ site_url }}/power-automate.html">Power Automate 連携手順を見る</a></p>
+</section>
+
+{% include "partials/_affiliate.html" %}
+{% endblock %}

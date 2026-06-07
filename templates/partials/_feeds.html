@@ -1,0 +1,13 @@
+{# RSSフィード一覧（コピー用URL）。feeds は generate_feeds.py の FEED_CONFIGS が単一情報源。 #}
+<div class="feed-grid">
+  {% for feed in feeds %}
+  <article class="feed-card">
+    <div class="feed-card__name">{{ feed.name }}</div>
+    <div class="feed-card__desc">{{ feed.description }}</div>
+    <div class="feed-card__url">
+      <input type="text" value="{{ site_url }}/feeds/{{ feed.file }}" readonly onclick="this.select()" aria-label="{{ feed.name }}のRSS URL">
+      <button type="button" class="copy-btn" data-copy="{{ site_url }}/feeds/{{ feed.file }}">コピー</button>
+    </div>
+  </article>
+  {% endfor %}
+</div>
