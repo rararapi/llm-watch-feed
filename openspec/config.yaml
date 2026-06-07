@@ -1,0 +1,52 @@
+schema: spec-driven
+
+# Project context — shown to AI when creating artifacts.
+context: |
+  ## プロダクト
+  AI開発者・ウォッチャー向けに、AIニュースを自動収集・要約して配信するサービス。
+  RSSフィードに加え、収集ニュースの要約を本サイトでも公開する。
+
+  ## 現フェーズの目的（最優先）
+  まずサイトをいずれかのクラウド上で稼働させ、サイトに更新があったときにRSSで
+  通知を受け取れる状態にすること。凝った機能より「動いて届く」ことを優先する。
+
+  ## 対象スコープ
+  AIニュース全般（モデル発表・性能・API、Agent/ツール、RAG、論文、
+  開発者向けリリース、資金調達・企業動向・規制・業界ニュース等を広く対象）。
+  ※注意: 現行コードは「LLMモデル情報だけ」を前提に作られており(is_model_related判定、
+  models.jsonという命名など)、スコープ拡大に伴い段階的に見直しが必要。
+
+  ## アーキテクチャ（現状）
+  - scripts/collect.py — RSSをfeedparser+requestsで取得、OpenAI APIで分析・要約し、
+    docs/data/models.jsonに追記。URLのSHA-256で重複排除。1回最大10件、全体最大500件。
+  - scripts/generate_feeds.py — models.jsonから複数のRSS XMLをdocs/feeds/に生成。
+    BASE_URLは環境変数SITE_URLで設定。
+  - docs/index.html — Vanilla HTML/JS。data/models.jsonをfetchして表示。
+  - .github/workflows/collect.yml — cronで収集を実行（火・金 09:00 JST）。
+
+  ## ホスティング方針（移行予定）
+  従来のGitHub Pagesから、いずれかのクラウド上での稼働へ移行する想定。
+  どこかのクラウドで動かすことはほぼ確実だが、クラウド事業者(AWS/GCP/Azure等)も
+  具体的なサービス選定も未定。収集処理の実行場所(GitHub Actions継続かクラウドへ
+  寄せるか)も未定。特定クラウドに過度に依存しない選択を基本とし、提案時はこの
+  未確定点を明示して、必要なら選択肢とトレードオフを提示すること。
+
+  ## 技術・運用方針
+  - LLM API呼び出しはバックエンド側のみで行い、APIキーはフロントに出さない。
+  - Pythonはシンプル・読みやすさ優先。フロントはVanilla HTML/JS/CSS（FW不使用）。
+  - 外部依存は安易に増やさない。標準ライブラリを優先。
+  - APIキーをHTML/JSに絶対に書かない。公開ディレクトリ(docs/)に機密を置かない。
+  - 1記事・1ソースの失敗で全体が落ちないようtry/exceptで保護する。
+
+# Per-artifact rules — custom constraints for specific artifacts.
+rules:
+  proposal:
+    - 「現フェーズの目的（サイト稼働＋RSS通知）」に寄与するかを冒頭で明確にする。
+    - スコープ拡大やAWS移行など未確定の前提に触れる場合は、決め打ちせず選択肢と推奨を示す。
+    - Non-goals（今回やらないこと）を必ず含める。
+  design:
+    - 外部依存の追加・クラウド/サービス選定・収集処理の実行場所の変更は、理由とトレードオフを明記する。
+    - APIキーや機密が公開ディレクトリ/フロントに漏れない設計であることを確認する。
+  tasks:
+    - 動作確認手順（collect.py / generate_feeds.py の実行、ローカルでのサイト確認）を含める。
+    - 1タスクは小さく、独立して検証できる単位に分割する。
