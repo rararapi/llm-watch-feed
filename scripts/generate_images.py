@@ -3,7 +3,7 @@
 AI生成画像は記事元のOG画像(`image_url`)とは別フィールド `image_generated_url` に保存する
 （テンプレートは AI画像 → OG画像 → プレースホルダ の順で表示する）。
 
-models.json を読み、対象（既定 importance == "A"）かつ image_generated_url 未設定の記事に対して:
+models.json を読み、対象（既定 重要度 B 以上 = A・B、A>B>C のしきい値）かつ image_generated_url 未設定の記事に対して:
   1) Gemini(テキスト)で「英語の抽象的な視覚プロンプト」と「日本語の代替テキスト(alt)」を生成
   2) Gemini 2.5 Flash Image で画像を生成
   3) 公開GCSバケットの images/<記事id>.webp へ不変キャッシュ付きでアップロード
@@ -70,8 +70,17 @@ else:
 
 
 MODELS_JSON_PATH = Path(os.environ.get("MODELS_JSON_PATH", "docs/data/models.json"))
-IMAGE_MIN_IMPORTANCE = os.environ.get("IMAGE_MIN_IMPORTANCE", "A")
+# 生成対象の重要度しきい値（高い順 A > B > C）。IMAGE_MIN_IMPORTANCE「以上」を対象にする。
+# 既定 "B" = 重要度 A・B を生成し、C は対象外。
+_IMPORTANCE_ORDER = {"A": 3, "B": 2, "C": 1}
+IMAGE_MIN_IMPORTANCE = os.environ.get("IMAGE_MIN_IMPORTANCE", "B")
 IMAGE_MAX_PER_RUN = int(os.environ.get("IMAGE_MAX_PER_RUN", "5"))
+
+
+def meets_importance(importance: Optional[str]) -> bool:
+    """記事の重要度が IMAGE_MIN_IMPORTANCE 以上か（A > B > C）。未知/欠落は対象外。"""
+    threshold = _IMPORTANCE_ORDER.get(IMAGE_MIN_IMPORTANCE, _IMPORTANCE_ORDER["A"])
+    return _IMPORTANCE_ORDER.get(importance or "", 0) >= threshold
 
 GCS_BUCKET = os.environ.get("GCS_BUCKET")
 IMAGE_BASE_URL = os.environ.get(
@@ -233,14 +242,14 @@ def main() -> None:
 
     bucket = storage.Client().bucket(GCS_BUCKET)
 
-    # 対象: 重要度が一致し、まだ AI生成画像(image_generated_url)を持たない記事。
+    # 対象: 重要度が IMAGE_MIN_IMPORTANCE 以上（A>B>C）で、まだ AI生成画像を持たない記事。
     targets = [
         a
         for a in articles
-        if a.get("importance") == IMAGE_MIN_IMPORTANCE and not a.get("image_generated_url")
+        if meets_importance(a.get("importance")) and not a.get("image_generated_url")
     ]
     logger.info(
-        f"Candidates: {len(targets)} (importance={IMAGE_MIN_IMPORTANCE}, "
+        f"Candidates: {len(targets)} (min importance={IMAGE_MIN_IMPORTANCE}, "
         f"max per run={IMAGE_MAX_PER_RUN})"
     )
 
