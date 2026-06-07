@@ -1,4 +1,8 @@
-"""Collect LLM model news from RSS sources and analyze with OpenAI."""
+"""Collect LLM model news from RSS sources and analyze with OpenAI.
+
+OPENAI_API_KEY があれば OpenAI で要約・分析し、無ければダミー文章を埋め込む
+（ダミーモード）。APIキー無しでもパイプライン全体が動くようにするため。
+"""
 
 import calendar
 import hashlib
@@ -164,6 +168,31 @@ def fetch_source(source: dict) -> list[dict]:
         return []
 
 
+DUMMY_NOTICE = "（OPENAI_API_KEY未設定のため自動生成されたダミー文章です）"
+
+
+def dummy_analysis(article: dict) -> dict:
+    """APIキーが無いときに埋め込むダミー分析結果。
+
+    要約はLLMを使わないため、記事の概要(excerpt)またはタイトルを流用しつつ、
+    ダミーである旨を明示する。全件を取り込めるよう is_model_related は True とする。
+    """
+    base = (article.get("excerpt") or article.get("title") or "").strip()
+    summary = f"{DUMMY_NOTICE} {base[:120]}".strip()
+    return {
+        "is_model_related": True,
+        "model_relevance_reason": DUMMY_NOTICE,
+        "model_name": "Unknown",
+        "provider": article.get("source", ""),
+        "model_type": "Other",
+        "summary": summary,
+        "impact": DUMMY_NOTICE,
+        "action": DUMMY_NOTICE,
+        "importance": "B",
+        "tags": ["dummy"],
+    }
+
+
 def analyze(client: OpenAI, model: str, article: dict) -> Optional[dict]:
     user_content = (
         f"タイトル: {article['title']}\n"
@@ -192,14 +221,18 @@ def analyze(client: OpenAI, model: str, article: dict) -> Optional[dict]:
 
 def main() -> None:
     api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        logger.error("OPENAI_API_KEY is not set")
-        raise SystemExit(1)
-
+    use_llm = bool(api_key)
     model = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
-    logger.info(f"Using model: {model}")
 
-    client = OpenAI(api_key=api_key)
+    client: Optional[OpenAI] = None
+    if use_llm:
+        client = OpenAI(api_key=api_key)
+        logger.info(f"Using model: {model}")
+    else:
+        logger.warning(
+            "OPENAI_API_KEY is not set. Running in DUMMY mode (placeholder summaries)."
+        )
+
     existing = load_existing()
     seen_urls = {a["url"] for a in existing}
     logger.info(f"Existing articles: {len(existing)}")
@@ -217,7 +250,7 @@ def main() -> None:
     added = 0
     for article in new_articles:
         logger.info(f"Analyzing: {article['title'][:70]}")
-        result = analyze(client, model, article)
+        result = analyze(client, model, article) if use_llm else dummy_analysis(article)
         if not result:
             logger.warning("  -> Skipped (analysis failed)")
             continue
@@ -255,7 +288,8 @@ def main() -> None:
         logger.info(f"Trimmed to latest {MAX_TOTAL_ARTICLES} articles")
 
     save_articles(existing)
-    logger.info(f"Done. Added: {added}, Total: {len(existing)}")
+    mode = "LLM" if use_llm else "DUMMY"
+    logger.info(f"Done ({mode} mode). Added: {added}, Total: {len(existing)}")
 
 
 if __name__ == "__main__":
