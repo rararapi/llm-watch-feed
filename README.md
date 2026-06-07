@@ -55,21 +55,25 @@ flowchart LR
 
 > ※ スコープは AI ニュース全般への拡大方針です。現行コードはモデル関連判定が残っており、段階的に一般化します。
 
-## ローカル実行
+## ローカル実行（チーム共通セットアップ）
 
-スクリプトはローカルでもそのまま動きます（入出力先は環境変数で切替可能。既定は `docs/` 配下）。
-Vertex AI を使うには `GCP_PROJECT` と ADC が必要です（未設定ならダミー要約で動作）。
+ローカルの設定は **`.env` に集約**します。`collect.py` / `generate_feeds.py` / `gcs_sync.py` は
+起動時に `.env` を自動読み込みします（本番はジョブの環境変数を使うため `.env` は無くてOK）。
+設定できる変数の一覧と説明は **`.env.example`** を参照してください。
 
 ```bash
 git clone https://github.com/rararapi/llm-watch-feed
 cd llm-watch-feed
 python -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # GCP_PROJECT を設定（未設定ならダミー要約で動作）
+pip install -r requirements.txt          # ① 依存（python-dotenv 等）
 
-# Vertex AI を実際に使う場合のみ（ADC 認証）
-gcloud auth application-default login
+cp .env.example .env                      # ② 設定は .env に集約（GCP_PROJECT / SITE_URL 等）
+
+gcloud auth application-default login     # ③ 認証(ADC)。APIキーは使わず .env にも入れない
 ```
+
+> 設定（接続先）は `.env`、認証は ADC（`~/.config/gcloud`）と役割が分かれます。`.env` に機密は入りません。
+> `GCP_PROJECT` 未設定ならダミー要約で動作します（Vertex 未使用でも一通り動かせます）。
 
 ```bash
 # 収集・分類（GCP_PROJECT + ADC があれば Vertex AI。無ければダミー要約）

@@ -189,7 +189,7 @@ cd docs && python -m http.server 8000
 
 GCP へのデプロイ・自動実行の手順は `DEPLOY.md` を参照。
 
-環境変数:
+環境変数（ローカルは `.env` に集約。`collect.py` / `generate_feeds.py` / `gcs_sync.py` が起動時に `load_dotenv` で読み込む。本番はジョブのenvを使い `.env` は無いのでno-op。一覧は `.env.example` 参照。認証(ADC)は `.env` に入れない）:
 - `GCP_PROJECT` — Vertex AI のプロジェクトID（未設定ならダミー要約で動作）。認証はADCで行いAPIキーは不要
 - `VERTEX_LOCATION` — Vertex AI のリージョン（デフォルト: `us-central1`）
 - `VERTEX_MODEL` — Gemini モデル名（デフォルト: `gemini-2.5-flash`）
