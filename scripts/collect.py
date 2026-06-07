@@ -228,34 +228,41 @@ def analyze(model: GenerativeModel, article: dict) -> Optional[dict]:
         return None
 
 
-def main() -> None:
+def build_model(system_prompt: str = SYSTEM_PROMPT) -> Optional[GenerativeModel]:
+    """Vertex AI モデルを ADC で初期化する。
+
+    GCP_PROJECT 未設定や認証不可なら None を返し、呼び出し側でダミーモードへ
+    フォールバックさせる（認証情報が無くてもパイプライン全体を完走させるため）。
+    system_prompt を差し替えれば、収集以外の用途（要約の再生成など）でも再利用できる。
+    """
     project = os.environ.get("GCP_PROJECT")
     location = os.environ.get("VERTEX_LOCATION", "us-central1")
     model_name = os.environ.get("VERTEX_MODEL", "gemini-2.5-flash")
 
-    # Vertex AI を ADC で初期化。GCP_PROJECT 未設定や認証不可なら
-    # 例外を捕捉してダミーモードへフォールバックし、ジョブ全体は完走させる。
-    model: Optional[GenerativeModel] = None
-    if project:
-        try:
-            vertexai.init(project=project, location=location)
-            model = GenerativeModel(
-                model_name,
-                system_instruction=SYSTEM_PROMPT,
-                generation_config=GenerationConfig(
-                    temperature=0,
-                    response_mime_type="application/json",
-                ),
-            )
-            logger.info(f"Using Vertex AI model: {model_name} ({project}/{location})")
-        except Exception as e:
-            logger.warning(f"Vertex AI init failed ({e}). Falling back to DUMMY mode.")
-            model = None
-    else:
+    if not project:
         logger.warning(
             "GCP_PROJECT is not set. Running in DUMMY mode (placeholder summaries)."
         )
+        return None
+    try:
+        vertexai.init(project=project, location=location)
+        model = GenerativeModel(
+            model_name,
+            system_instruction=system_prompt,
+            generation_config=GenerationConfig(
+                temperature=0,
+                response_mime_type="application/json",
+            ),
+        )
+        logger.info(f"Using Vertex AI model: {model_name} ({project}/{location})")
+        return model
+    except Exception as e:
+        logger.warning(f"Vertex AI init failed ({e}). Falling back to DUMMY mode.")
+        return None
 
+
+def main() -> None:
+    model = build_model()
     use_llm = model is not None
 
     existing = load_existing()
