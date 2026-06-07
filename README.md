@@ -3,38 +3,45 @@
 ![LLM Model Watch Feed overview](assets/readme/overview.png)
 
 LLM Model Watch Feed は、LLM モデルに関する重要な更新だけを集めて RSS とサイトで配信する小さなウォッチサービスです。
-収集・要約・フィード生成・配信は **GCP 上で毎日自動実行** され、公開は Firebase Hosting（HTTPS）で行います。
+収集・要約・フィード生成は **GCP 上で毎日自動実行** されます。構成は方式A: **画面は Firebase Hosting（無料HTTPS）**、**データとRSSフィードは公開GCSバケット**が配信します。
 
-新モデルの発表、性能改善、価格変更、API 提供開始、オープンウェイトモデル公開など、AI アプリ開発者が追うべき情報を RSS ソースから収集し、OpenAI API で分類・要約します。
+新モデルの発表、性能改善、価格変更、API 提供開始、オープンウェイトモデル公開など、AI アプリ開発者が追うべき情報を RSS ソースから収集し、**Vertex AI（Gemini）** で分類・要約します。
 
 ## できること
 
 | 機能 | 内容 |
 | --- | --- |
-| RSS 収集 | OpenAI、Google DeepMind、Hugging Face などの RSS を取得 |
-| LLM 判定 | モデル関連ニュースかどうかを OpenAI API で判定（キー未設定時はダミー要約で動作） |
+| RSS 収集 | OpenAI、Anthropic、Google DeepMind、Hugging Face などの RSS を取得 |
+| LLM 判定 | モデル関連ニュースかどうかを Vertex AI（Gemini）で判定（未設定時はダミー要約で動作） |
 | 重要度分類 | A / B / C の重要度、モデル種別、タグを付与 |
-| RSS 配信 | 用途別の RSS フィードを生成し Firebase Hosting で公開 |
-| サイト公開 | `index.html` でフィード URL と最新記事を公開 |
+| RSS 配信 | 用途別の RSS フィードを生成し公開GCSバケットで配信 |
+| サイト公開 | `index.html`（Firebase Hosting）でフィード URL と最新記事を公開 |
 | Teams 通知 | Power Automate の RSS トリガーから Teams へ通知可能 |
 
 ## 仕組み（GCP 構成）
 
+ニュース更新は公開GCSバケットへの書き込みのみで完結し、サイトの「デプロイ」は不要です。
+パイプラインは **ニュース更新（毎日・自動・GCS書き込み）** と **サイトデプロイ（画面変更時のみ・Firebase）** に分離しています。
+
 ```mermaid
 flowchart LR
-    S[Cloud Scheduler<br/>毎日 09:00 JST] --> J[Cloud Run Job]
-    G[(GCS バケット<br/>models.json/正本)] -->|1. 取得| J
-    J -->|2. collect.py| K[OpenAI API で<br/>判定・分類・要約]
+    S[Cloud Scheduler<br/>毎日] --> J[Cloud Run Job<br/>run_job.sh]
+    B[(公開GCSバケット<br/>data/ + feeds/)] -->|1. 取得| J
+    J -->|2. collect.py| K[Vertex AI Gemini で<br/>判定・分類・要約]
     K -->|3. generate_feeds.py| F[feeds/*.xml 生成]
-    J -->|4. 保存| G
-    J -->|5. deploy| H[Firebase Hosting<br/>HTTPS 公開]
-    H --> P[Power Automate / Teams]
+    J -->|4. data/models.json 保存| B
+    J -->|5. feeds/ 配信| B
+    B -->|データ/フィードをHTTPS配信| P[Power Automate / Teams]
+    H[Firebase Hosting<br/>画面のみ] -->|index.html 表示| U[ブラウザ]
+    U -.->|JS が CORS で fetch| B
+    D[deploy_site.sh = firebase deploy<br/>画面変更時のみ] --> H
 ```
 
-- 状態 `models.json` の正本は **GCS**（DB は使いません）。実行ごとに「取得 → 更新 → 保存」します。
-- 収集・生成・配信は **Cloud Run Job** が 1 回で実行し、**Cloud Scheduler** が毎日トリガーします。
-- 一般配信は **Firebase Hosting に一本化**（GCS バケットは非公開）。
-- API キーは **Secret Manager**（クラウド）またはローカル `.env` のみに置き、公開ファイルには含めません。
+- 状態 `data/models.json` の正本は **公開GCSバケット**（DB は使いません）。実行ごとに「取得 → 更新 → 保存」し、それがそのまま配信されます。
+- データ／RSSフィード配信は **公開GCSバケット**（HTTPS・CORS設定済み）。ニュース更新はGCS書き込みのみで **デプロイ不要**。
+- 画面（`index.html` 等）は **Firebase Hosting**（無料HTTPS、`*.web.app`、独自ドメイン無料接続可）。`scripts/deploy_site.sh`（= `firebase deploy`）で **画面変更時のみ** デプロイ。
+- フロントJS は data/feeds を GCS の絶対URL（`DATA_ORIGIN`）から fetch します。フィードURLはGCSのまま（綺麗にするには有料の方式B=LB/CDN or rewrite が必要）。
+- LLM 認証は **ADC（実行サービスアカウント）** で行い、API キーは不要。公開ファイルには機密を含めません。
 
 ## 対象にする情報
 
@@ -51,17 +58,21 @@ flowchart LR
 ## ローカル実行
 
 スクリプトはローカルでもそのまま動きます（入出力先は環境変数で切替可能。既定は `docs/` 配下）。
+Vertex AI を使うには `GCP_PROJECT` と ADC が必要です（未設定ならダミー要約で動作）。
 
 ```bash
 git clone https://github.com/rararapi/llm-watch-feed
 cd llm-watch-feed
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # OPENAI_API_KEY を設定（未設定ならダミー要約で動作）
+cp .env.example .env   # GCP_PROJECT を設定（未設定ならダミー要約で動作）
+
+# Vertex AI を実際に使う場合のみ（ADC 認証）
+gcloud auth application-default login
 ```
 
 ```bash
-# 収集・分類（OPENAI_API_KEY は任意）
+# 収集・分類（GCP_PROJECT + ADC があれば Vertex AI。無ければダミー要約）
 python scripts/collect.py
 # RSS 生成
 python scripts/generate_feeds.py
@@ -75,24 +86,29 @@ cd docs && python -m http.server 8000   # http://localhost:8000
 MODELS_JSON_PATH=/tmp/out/models.json FEEDS_DIR=/tmp/out/feeds \
   python scripts/collect.py && \
 MODELS_JSON_PATH=/tmp/out/models.json FEEDS_DIR=/tmp/out/feeds \
-  SITE_URL=https://ai-watch-feed.web.app python scripts/generate_feeds.py
+  SITE_URL=https://storage.googleapis.com/my-bucket python scripts/generate_feeds.py
 ```
 
 ## GCP へのデプロイ
 
-構築手順（Cloud Run Job / Scheduler / GCS / Firebase Hosting / Secret Manager）は **[DEPLOY.md](DEPLOY.md)** を参照してください。
-コンテナ実行のエントリポイントは `scripts/run_job.sh`（取得 → collect → generate → 保存 → deploy）です。
+構築手順（Cloud Run Job / Scheduler / 公開GCSバケット / Firebase Hosting / Vertex AI）は **[DEPLOY.md](DEPLOY.md)** を参照してください。
+
+- ニュース更新ジョブのエントリポイントは `scripts/run_job.sh`（取得 → collect → generate → data/models.json 保存 → feeds 配信）。**GCS書き込みのみ・デプロイなし**。
+- サイト（画面）デプロイは `scripts/deploy_site.sh`（= `firebase deploy --only hosting`。画面変更時のみ実行）。
 
 環境変数（ジョブ）:
 
 | 名前 | 説明 |
 | --- | --- |
-| `GCS_BUCKET` | 状態 `models.json` を保存する非公開バケット名（必須） |
-| `FIREBASE_PROJECT` | デプロイ先 Firebase/GCP プロジェクト ID（必須） |
-| `SITE_URL` | 公開サイト URL（フィードの自己リンク用） |
-| `OPENAI_API_KEY` | OpenAI API キー（Secret Manager 経由。未設定ならダミーモード） |
-| `OPENAI_MODEL` | 分類モデル名（既定 `gpt-4.1-mini`） |
+| `GCS_BUCKET` | データ/フィード配信バケット名（必須） |
+| `SITE_URL` | フィードの自己リンク用。フィードはGCSにあるためバケットURLを指定 |
+| `GCP_PROJECT` | Vertex AI のプロジェクト ID（ADC 認証。未設定ならダミーモード） |
+| `VERTEX_LOCATION` | Vertex AI のリージョン（既定 `us-central1`） |
+| `VERTEX_MODEL` | Gemini モデル名（既定 `gemini-2.5-flash`） |
+| `GCS_OBJECT` | 状態＝配信データのキー（既定 `data/models.json`） |
 | `MODELS_JSON_PATH` / `FEEDS_DIR` | 入出力先（ジョブ内で `public/` 配下に設定） |
+
+> 画面のフロントJS が data/feeds を取得する GCS ベースURLは `docs/index.html` の `DATA_ORIGIN` 定数で指定します。
 
 ## 公開 RSS フィード
 
@@ -105,11 +121,14 @@ MODELS_JSON_PATH=/tmp/out/models.json FEEDS_DIR=/tmp/out/feeds \
 | Coding | `/feeds/coding.xml` | コーディング性能・コード生成モデル関連 |
 | Multimodal | `/feeds/multimodal.xml` | マルチモーダル、音声、動画モデル関連 |
 
-公開サイトが `https://ai-watch-feed.web.app` の場合、All フィードは次の URL です。
+フィードは公開GCSバケットが配信します。バケットが `ai-watch-feed-llm-watch-public` の場合、All フィードは次の URL です。
 
 ```text
-https://ai-watch-feed.web.app/feeds/all.xml
+https://storage.googleapis.com/ai-watch-feed-llm-watch-public/feeds/all.xml
 ```
+
+> 画面のURLは Firebase Hosting（`https://<project>.web.app` または独自ドメイン）ですが、**RSSフィードのURLはGCSのまま**です。
+> フィードURLまで独自ドメインにするには有料の方式B（LB/CDN or rewrite）が必要です（[DEPLOY.md](DEPLOY.md) §6）。
 
 ## Power Automate で Teams に通知する
 
@@ -122,8 +141,8 @@ https://ai-watch-feed.web.app/feeds/all.xml
 
 ## 注意
 
-- `.env` と API キーは絶対にコミットしないでください。クラウドでは Secret Manager を使います。
-- `models.json` と `feeds/*.xml` は生成物です。クラウドでは GCS / Firebase に出力され、リポジトリにはコミットしません。
+- `.env` と認証情報は絶対にコミットしないでください。クラウドでは ADC（サービスアカウント）を使い API キーは不要です。
+- `models.json` と `feeds/*.xml` は生成物です。クラウドでは GCS に出力され、リポジトリにはコミットしません。
 - ローカル確認では `file://` ではなく HTTP サーバーを使ってください。
 
 ## 主要ファイル
@@ -131,15 +150,16 @@ https://ai-watch-feed.web.app/feeds/all.xml
 ```text
 .
 ├── scripts/
-│   ├── collect.py          # RSS 収集、LLM 判定、models.json 更新
+│   ├── collect.py          # RSS 収集、Vertex AI 判定、models.json 更新
 │   ├── generate_feeds.py   # models.json から RSS XML を生成
-│   ├── gcs_sync.py         # GCS との状態 download/upload
-│   └── run_job.sh          # Cloud Run Job エントリポイント
+│   ├── gcs_sync.py         # GCS との download/upload/publish
+│   ├── run_job.sh          # Cloud Run Job エントリポイント（ニュース更新・GCS書き込み）
+│   └── deploy_site.sh      # 画面を Firebase Hosting へデプロイ（変更時のみ）
 ├── docs/
-│   ├── index.html          # 公開画面（Firebase Hosting で配信）
-│   └── power-automate.html  # Power Automate 設定ガイド
+│   ├── index.html          # 公開画面（Firebase Hosting で配信。DATA_ORIGIN でGCSからデータ取得）
+│   └── power-automate.html # Power Automate 設定ガイド
+├── firebase.json           # Firebase Hosting 設定（画面のみ配信）
 ├── Dockerfile              # Cloud Run Job 用イメージ
-├── firebase.json           # Firebase Hosting 設定
 ├── requirements.txt        # ベース依存
 ├── requirements-job.txt    # ジョブ追加依存（GCS クライアント）
 ├── DEPLOY.md               # GCP デプロイ手順

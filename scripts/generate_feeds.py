@@ -16,7 +16,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 BASE_URL = os.environ.get(
-    "SITE_URL", "https://your-username.github.io/llm-watch-feed"
+    "SITE_URL", "https://storage.googleapis.com/your-bucket"
 ).rstrip("/")
 MODELS_JSON_PATH = Path(os.environ.get("MODELS_JSON_PATH", "docs/data/models.json"))
 FEEDS_DIR = Path(os.environ.get("FEEDS_DIR", "docs/feeds"))
