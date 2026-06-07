@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 BASE_URL = os.environ.get(
     "SITE_URL", "https://your-username.github.io/llm-watch-feed"
 ).rstrip("/")
-MODELS_JSON_PATH = Path("docs/data/models.json")
-FEEDS_DIR = Path("docs/feeds")
+MODELS_JSON_PATH = Path(os.environ.get("MODELS_JSON_PATH", "docs/data/models.json"))
+FEEDS_DIR = Path(os.environ.get("FEEDS_DIR", "docs/feeds"))
 MAX_ITEMS_PER_FEED = 50
 
 FEED_CONFIGS: dict[str, dict] = {

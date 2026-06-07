@@ -50,7 +50,7 @@ RSS_SOURCES = [
     },
 ]
 
-MODELS_JSON_PATH = Path("docs/data/models.json")
+MODELS_JSON_PATH = Path(os.environ.get("MODELS_JSON_PATH", "docs/data/models.json"))
 MAX_NEW_ARTICLES = 10
 MAX_TOTAL_ARTICLES = 500
 

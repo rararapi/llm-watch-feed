@@ -4,4 +4,9 @@ __pycache__/
 *.pyc
 .DS_Store
 
+# Cloud Run Job が生成する公開物のビルド出力（コミットしない）
+public/
+# firebase-tools が生成するローカルキャッシュ
+.firebase/
+
 .claude/settings.local.json

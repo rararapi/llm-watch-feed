@@ -1,0 +1,4 @@
+# Cloud Run Job 用の追加依存。
+# ベース(requirements.txt)は GCS を含めず軽量に保ち、ジョブ実行時のみ GCS クライアントを足す。
+-r requirements.txt
+google-cloud-storage==2.18.2
