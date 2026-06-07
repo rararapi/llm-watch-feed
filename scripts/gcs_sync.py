@@ -25,6 +25,13 @@ from pathlib import Path
 
 from google.cloud import storage
 
+try:  # ローカル実行時は .env を読み込む（本番はジョブの環境変数を使うため no-op）
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",

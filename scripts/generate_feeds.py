@@ -8,6 +8,13 @@ from email.utils import format_datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+try:  # ローカル実行時は .env を読み込む（本番はジョブの環境変数を使うため no-op）
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:  # python-dotenv 未導入でも標準ライブラリのみで動作させる
+    pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
