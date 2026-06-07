@@ -42,7 +42,7 @@ RSSフィードに加え、収集ニュースの要約を本サイトでも公�
 ```
 scripts/collect.py
   - RSS_SOURCESからフィードを取得（feedparser + requests）
-  - 新着記事をOpenAI APIで分析（is_model_related判定）。APIキー未設定時はダミー要約を埋め込む
+  - 新着記事をVertex AI（Gemini）で分析（is_model_related判定）。Vertex未設定/認証不可時はダミー要約を埋め込む
   - モデル関連記事のみ models.json に追記（出力先は環境変数 MODELS_JSON_PATH、既定 docs/data/models.json）
   - URLのSHA-256ハッシュで重複排除
   - 1回の実行で最大MAX_NEW_ARTICLES=10件を処理
@@ -64,7 +64,8 @@ docs/index.html
 GCP 実行基盤（手順は DEPLOY.md）
   - Cloud Scheduler が毎日 09:00 JST に Cloud Run Job をトリガー
   - 状態の正本は GCS（非公開バケット）、配信は Firebase Hosting に一本化
-  - OPENAI_API_KEY は Secret Manager 経由（未設定ならダミーモード）
+  - 記事分析は Vertex AI（Gemini）を ADC（実行サービスアカウント）で利用。APIキー不要
+    （GCP_PROJECT 未設定/権限不足ならダミーモード）
 ```
 
 ---
@@ -76,7 +77,7 @@ GitHub Pages から **GCP** へ移行済み（案①）。構築手順は `DEPLO
 - 実行: Cloud Run Job（`scripts/run_job.sh`）＋ Cloud Scheduler（毎日）
 - 状態: GCS バケット（非公開）の `models.json` を正本に download-run-upload
 - 配信: Firebase Hosting（HTTPS・CDN）。既定ドメイン `*.web.app`、独自ドメインは後追いで追加可
-- シークレット: Secret Manager（`OPENAI_API_KEY`）。未設定ならダミーモードで完走
+- LLM: Vertex AI（Gemini）。認証は ADC（実行サービスアカウントに `roles/aiplatform.user`）。APIキー不要。未設定/権限不足ならダミーモードで完走
 - 設計判断とトレードオフの記録は `openspec/changes/deploy-to-gcp/`（proposal / design）を参照
 
 ---
@@ -164,7 +165,10 @@ GitHub Pages から **GCP** へ移行済み（案①）。構築手順は `DEPLO
 # 依存インストール
 pip install -r requirements.txt
 
-# 記事収集（OPENAI_API_KEYは任意。無ければダミー要約で動作）
+# 記事収集（GCP_PROJECTとADCがあればVertex AIで分析。無ければダミー要約で動作）
+#   ローカルで実際にVertexを使う場合は事前に:
+#     gcloud auth application-default login
+#     export GCP_PROJECT=<your-project-id>   # .env でも可
 python scripts/collect.py
 
 # フィード生成
@@ -177,8 +181,9 @@ cd docs && python -m http.server 8000
 GCP へのデプロイ・自動実行の手順は `DEPLOY.md` を参照。
 
 環境変数:
-- `OPENAI_API_KEY` — OpenAI APIキー（任意。未設定ならダミー要約で動作。クラウドでは Secret Manager 経由）
-- `OPENAI_MODEL` — モデル名（デフォルト: `gpt-4.1-mini`）
+- `GCP_PROJECT` — Vertex AI のプロジェクトID（未設定ならダミー要約で動作）。認証はADCで行いAPIキーは不要
+- `VERTEX_LOCATION` — Vertex AI のリージョン（デフォルト: `us-central1`）
+- `VERTEX_MODEL` — Gemini モデル名（デフォルト: `gemini-2.5-flash`）
 - `SITE_URL` — 公開サイトのURL（generate_feeds.py用。Firebase Hosting の URL）
 - `MODELS_JSON_PATH` / `FEEDS_DIR` — 入出力先（既定 `docs/data/models.json` / `docs/feeds/`。ジョブでは `public/` 配下）
 - `GCS_BUCKET` / `GCS_OBJECT` — 状態保存先（`scripts/gcs_sync.py` 用、クラウド実行時）
