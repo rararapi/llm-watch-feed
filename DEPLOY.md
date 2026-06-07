@@ -37,7 +37,7 @@ gcloud config set project "$PROJECT_ID"
 ```bash
 gcloud services enable \
   run.googleapis.com cloudscheduler.googleapis.com \
-  secretmanager.googleapis.com artifactregistry.googleapis.com \
+  aiplatform.googleapis.com artifactregistry.googleapis.com \
   cloudbuild.googleapis.com storage.googleapis.com \
   firebasehosting.googleapis.com
 ```
@@ -54,13 +54,13 @@ gcloud storage buckets create "gs://${BUCKET}" \
 gcloud storage cp docs/data/models.json "gs://${BUCKET}/models.json"
 ```
 
-## 3.3 Secret Manager に OpenAI キー登録
+## 3.3 LLM（Vertex AI）の利用方針
 
-```bash
-printf '%s' "sk-..." | gcloud secrets create OPENAI_API_KEY --data-file=-
-# 既存更新時: gcloud secrets versions add OPENAI_API_KEY --data-file=-
-```
-> 未登録のままでもジョブはダミーモードで完走する（段階導入可）。
+記事の分析・要約は Vertex AI（Gemini）で行う。**API キーは使わず**、実行サービスアカウントの
+ADC（Application Default Credentials）で認証する。よってここで登録するシークレットは無い。
+権限は次節 3.4 でサービスアカウントに `roles/aiplatform.user` を付与して与える。
+
+> `GCP_PROJECT` 未設定や権限不足のままでもジョブはダミーモードで完走する（段階導入可）。
 
 ## 3.4 最小権限のサービスアカウント
 
@@ -71,9 +71,9 @@ gcloud iam service-accounts create "$SA" --display-name="LLM Watch Job"
 gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
   --member="serviceAccount:${SA_EMAIL}" --role="roles/storage.objectAdmin"
 
-# Secret: 当該シークレットの accessor のみ
-gcloud secrets add-iam-policy-binding OPENAI_API_KEY \
-  --member="serviceAccount:${SA_EMAIL}" --role="roles/secretmanager.secretAccessor"
+# Vertex AI: 推論呼び出しに必要な最小ロール
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SA_EMAIL}" --role="roles/aiplatform.user"
 
 # Firebase Hosting デプロイ権限（ジョブ内 firebase deploy が ADC で使用）
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
@@ -99,8 +99,7 @@ gcloud builds submit --tag "$IMAGE"
 gcloud run jobs create "$JOB" \
   --image="$IMAGE" --region="$REGION" \
   --service-account="$SA_EMAIL" \
-  --set-env-vars="GCS_BUCKET=${BUCKET},FIREBASE_PROJECT=${PROJECT_ID},SITE_URL=${SITE_URL},OPENAI_MODEL=gpt-4.1-mini" \
-  --set-secrets="OPENAI_API_KEY=OPENAI_API_KEY:latest" \
+  --set-env-vars="GCS_BUCKET=${BUCKET},FIREBASE_PROJECT=${PROJECT_ID},SITE_URL=${SITE_URL},GCP_PROJECT=${PROJECT_ID},VERTEX_LOCATION=${REGION},VERTEX_MODEL=gemini-2.5-flash" \
   --max-retries=1 --task-timeout=600
 # 既存更新時は `gcloud run jobs update "$JOB" ...`
 ```
@@ -149,6 +148,20 @@ firebase hosting:sites:list --project "$PROJECT_ID"
 2. `firebase hosting:sites` のサイトに対し Firebase コンソール / CLI でカスタムドメインを追加し、提示される
    DNS レコードを設定 → 証明書自動発行を待つ。
 3. `SITE_URL` を独自ドメインに更新し、`gcloud run jobs update "$JOB" --set-env-vars=SITE_URL=...` で反映。
+
+## 5.9 ローカルから Vertex AI を呼ぶ（開発時）
+
+ローカル実行でも本番と同じ ADC で Gemini を叩ける。初回のみ認証し、`GCP_PROJECT` を渡す。
+
+```bash
+gcloud auth application-default login          # 一度だけ。ブラウザで認証
+export GCP_PROJECT="$PROJECT_ID"               # .env に GCP_PROJECT=... でも可
+# 任意: export VERTEX_LOCATION=us-central1  VERTEX_MODEL=gemini-2.5-flash
+python scripts/collect.py                      # ログに "Using Vertex AI model: ..." が出れば成功
+```
+> `GCP_PROJECT` を渡さなければダミーモードで動く（認証不要）。ログイン中のアカウントにも
+> プロジェクトでの `roles/aiplatform.user` 相当の権限が必要。`aiplatform.googleapis.com` が
+> 未有効だと呼び出しが弾かれるため、3.1 の API 有効化を先に済ませておく。
 
 ## 6. セキュリティ検収
 
