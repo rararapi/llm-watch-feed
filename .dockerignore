@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+openspec
+public
+README.md
+TASKS.md
+assets
+.env
+.env.*

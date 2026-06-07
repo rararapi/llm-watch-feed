@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+openspec
+public
+.firebase
+README.md
+TASKS.md
+DEPLOY.md
+assets
+.env
+.env.*

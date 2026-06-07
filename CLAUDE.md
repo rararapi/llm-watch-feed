@@ -7,12 +7,12 @@ RSSフィードに加え、収集ニュースの要約を本サイトでも公�
 
 - LLM API呼び出しはバックエンド側のみで行い、APIキーはフロントに出さない
 - 収集→分析・要約→JSON→RSS XML / サイトの順に生成
-- ホスティングは**いずれかのクラウドへ移行予定**（後述「ホスティング方針」）
+- ホスティングは**GCP で稼働**（後述「ホスティング方針」、手順は `DEPLOY.md`）
 
 > ⚠️ **方針転換中**: 本プロジェクトは当初「LLMモデル情報だけ」を対象とする静的フィード(GitHub Pages配信)としてMVPを作った。
-> 現在は **対象をAIニュース全般へ拡大** し、**配信先をクラウドへ移行** する方針に変わっている。
-> このため現行コード（`is_model_related`判定・`models.json`という命名・GitHub Pages前提など）は
-> 旧方針のまま残っており、新方針に合わせて段階的に見直す必要がある。
+> **配信基盤は GCP（Cloud Run Job + Cloud Scheduler + GCS + Firebase Hosting）へ移行済み**（手順は `DEPLOY.md`）。
+> 一方で **対象をAIニュース全般へ拡大** する方針は進行中で、現行コード（`is_model_related`判定・`models.json`という命名）は
+> 旧方針のまま残っており、段階的に見直す必要がある。
 
 ---
 
@@ -36,43 +36,48 @@ RSSフィードに加え、収集ニュースの要約を本サイトでも公�
 
 ## アーキテクチャ（現状）
 
-以下は旧方針のまま残っている現行コードの挙動。新方針に合わせ段階的に見直す。
+実行基盤は GCP。状態 `models.json` の正本は GCS、配信は Firebase Hosting。
+収集・分類のコードは旧方針（モデル関連判定）のまま残っており段階的に見直す。
 
 ```
 scripts/collect.py
   - RSS_SOURCESからフィードを取得（feedparser + requests）
   - 新着記事をOpenAI APIで分析（is_model_related判定）。APIキー未設定時はダミー要約を埋め込む
-  - モデル関連記事のみdocs/data/models.jsonに追記
+  - モデル関連記事のみ models.json に追記（出力先は環境変数 MODELS_JSON_PATH、既定 docs/data/models.json）
   - URLのSHA-256ハッシュで重複排除
   - 1回の実行で最大MAX_NEW_ARTICLES=10件を処理
   - models.jsonは最大MAX_TOTAL_ARTICLES=500件に制限
 
 scripts/generate_feeds.py
-  - docs/data/models.jsonを読み込む
-  - 6種類のRSS XMLを生成してdocs/feeds/に書き出す
-  - BASE_URLは環境変数SITE_URLで設定（デフォルト: プレースホルダー）
+  - models.json（MODELS_JSON_PATH）を読み込む
+  - 6種類のRSS XMLを生成（出力先は環境変数 FEEDS_DIR、既定 docs/feeds/）
+  - BASE_URLは環境変数SITE_URLで設定
+
+scripts/gcs_sync.py / scripts/run_job.sh
+  - run_job.sh が Cloud Run Job のエントリポイント
+  - GCSからmodels.json取得 → collect → generate → GCSへ保存 → Firebase Hostingへデプロイ
 
 docs/index.html
-  - 静的HTML + Vanilla JS
-  - window.locationからフィードURLを動的生成
-  - ./data/models.jsonをfetchして最新モデル情報を表示
+  - 静的HTML + Vanilla JS。Firebase Hostingで配信
+  - window.locationからフィードURLを動的生成、./data/models.jsonをfetchして表示
 
-.github/workflows/collect.yml
-  - 火・金 09:00 JST (UTC 00:00) にcron実行
-  - workflow_dispatchで手動実行可
-  - 変更がない場合はcommitしない
+GCP 実行基盤（手順は DEPLOY.md）
+  - Cloud Scheduler が毎日 09:00 JST に Cloud Run Job をトリガー
+  - 状態の正本は GCS（非公開バケット）、配信は Firebase Hosting に一本化
+  - OPENAI_API_KEY は Secret Manager 経由（未設定ならダミーモード）
 ```
 
 ---
 
-## ホスティング方針（移行予定）
+## ホスティング方針（GCP・実装済み）
 
-従来のGitHub Pagesから、**いずれかのクラウド上での稼働へ移行**する想定。
-どこかのクラウドで動かすことはほぼ確実だが、クラウド事業者（AWS / GCP / Azure 等）も
-具体的なサービス選定も**未定**。収集処理の実行場所（GitHub Actions 継続か、クラウドへ寄せるか）も**未定**。
+GitHub Pages から **GCP** へ移行済み（案①）。構築手順は `DEPLOY.md`。
 
-- 特定クラウドに過度に依存しない選択を基本とする。
-- 提案・設計時はこの未確定点を明示し、必要なら選択肢とトレードオフを提示する。
+- 実行: Cloud Run Job（`scripts/run_job.sh`）＋ Cloud Scheduler（毎日）
+- 状態: GCS バケット（非公開）の `models.json` を正本に download-run-upload
+- 配信: Firebase Hosting（HTTPS・CDN）。既定ドメイン `*.web.app`、独自ドメインは後追いで追加可
+- シークレット: Secret Manager（`OPENAI_API_KEY`）。未設定ならダミーモードで完走
+- 設計判断とトレードオフの記録は `openspec/changes/deploy-to-gcp/`（proposal / design）を参照
 
 ---
 
@@ -169,10 +174,15 @@ python scripts/generate_feeds.py
 cd docs && python -m http.server 8000
 ```
 
+GCP へのデプロイ・自動実行の手順は `DEPLOY.md` を参照。
+
 環境変数:
-- `OPENAI_API_KEY` — OpenAI APIキー（任意。未設定ならダミー要約で動作）
+- `OPENAI_API_KEY` — OpenAI APIキー（任意。未設定ならダミー要約で動作。クラウドでは Secret Manager 経由）
 - `OPENAI_MODEL` — モデル名（デフォルト: `gpt-4.1-mini`）
-- `SITE_URL` — 公開サイトのURL（generate_feeds.py用。現状GitHub Pages、移行後は稼働クラウドのURL）
+- `SITE_URL` — 公開サイトのURL（generate_feeds.py用。Firebase Hosting の URL）
+- `MODELS_JSON_PATH` / `FEEDS_DIR` — 入出力先（既定 `docs/data/models.json` / `docs/feeds/`。ジョブでは `public/` 配下）
+- `GCS_BUCKET` / `GCS_OBJECT` — 状態保存先（`scripts/gcs_sync.py` 用、クラウド実行時）
+- `FIREBASE_PROJECT` — デプロイ先プロジェクトID（`scripts/run_job.sh` 用）
 
 ---
 
