@@ -4,11 +4,12 @@
 #
 #   1. GCS から models.json(状態) を取得（無ければ初回として空開始）
 #   2. collect.py で収集・分析
-#   3. generate_feeds.py でフィード生成
-#   4. generate_pages.py でサイト(index/articles/assets)生成
-#   5. 更新後 models.json を GCS へ保存（＝公開配信データ data/models.json）
-#   6. RSS フィードを GCS の feeds/ へ配信
-#   7. 生成サイト(index/articles/assets)を GCS へ配信
+#   3. generate_images.py で重要度AのAIアイキャッチ画像を生成（GCSへ・別フィールド）
+#   4. generate_feeds.py でフィード生成
+#   5. generate_pages.py でサイト(index/articles/assets)生成
+#   6. 更新後 models.json を GCS へ保存（＝公開配信データ data/models.json）
+#   7. RSS フィードを GCS の feeds/ へ配信
+#   8. 生成サイト(index/articles/assets)を GCS へ配信
 #
 # このジョブは「ニュース更新」だけを行う。記事ページHTMLは feeds と同じ“バッチ生成物”として
 # GCSへ書き込むだけで、サイトの「デプロイ」ではない（firebase deploy は走らない）。
@@ -39,22 +40,25 @@ mkdir -p "$(dirname "$MODELS_JSON_PATH")" "$FEEDS_DIR" "$PAGES_DIR/articles"
 echo "[run_job] 1/7 download state from GCS"
 python scripts/gcs_sync.py download
 
-echo "[run_job] 2/7 collect"
+echo "[run_job] 2/8 collect"
 python scripts/collect.py
 
-echo "[run_job] 3/7 generate feeds"
+echo "[run_job] 3/8 generate AI images (importance A; skips gracefully if unavailable)"
+python scripts/generate_images.py
+
+echo "[run_job] 4/8 generate feeds"
 python scripts/generate_feeds.py
 
-echo "[run_job] 4/7 generate site pages"
+echo "[run_job] 5/8 generate site pages"
 python scripts/generate_pages.py
 
-echo "[run_job] 5/7 upload state (= published data) to GCS"
+echo "[run_job] 6/8 upload state (= published data) to GCS"
 python scripts/gcs_sync.py upload
 
-echo "[run_job] 6/7 publish feeds to GCS"
+echo "[run_job] 7/8 publish feeds to GCS"
 python scripts/gcs_sync.py publish-feeds
 
-echo "[run_job] 7/7 publish site pages to GCS"
+echo "[run_job] 8/8 publish site pages to GCS"
 python scripts/gcs_sync.py publish-pages
 
 echo "[run_job] done"
