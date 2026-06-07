@@ -45,6 +45,7 @@ jobs:
               - 'scripts/**'
               - 'Dockerfile'
               - '.dockerignore'    # ビルドコンテキストに影響するため再ビルド対象
+              - '.gcloudignore'    # gcloud builds submit のアップロード対象を決める
               - 'requirements*.txt'
               - 'templates/**'     # generate_pages.py のテンプレ（イメージに COPY）
               - 'assets/**'        # サイト静的物（イメージに COPY）
