@@ -1,28 +1,29 @@
 #!/usr/bin/env bash
 #
-# サイトデプロイ（ニュース更新とは分離）
+# サイトデプロイ（ニュース更新とは分離）— 方式A
 #
-# index.html などのサイト静的ファイルを公開GCSバケットへ配信する。
+# サイトの画面（index.html などの静的ファイル）を Firebase Hosting へデプロイする。
+# 独自ドメイン/HTTPS を無料で付けられる Firebase Hosting が「画面」だけを配信し、
+# データ（data/models.json）とRSSフィード（feeds/*.xml）は公開GCSバケットが配信する。
+#
 # サイトの見た目・文言・JS を変更したときだけ実行すればよい。
-# 毎日のニュース更新（run_job.sh）はデータとフィードのみ更新し、ここには触れない。
+# 毎日のニュース更新（run_job.sh）はGCSへの書き込みのみで、ここには触れない。
 #
-# 必須環境変数:
-#   GCS_BUCKET   配信バケット名
-# 任意:
-#   SITE_DIR     サイト静的ファイルのディレクトリ（既定 docs）
+# 任意環境変数:
+#   FIREBASE_PROJECT  デプロイ先プロジェクトID（既定は .firebaserc の default）
+#
+# 前提: firebase CLI が認証済みであること（firebase login 済み、または CI トークン）。
 #
 # 使い方:
-#   GCS_BUCKET=<bucket> ./scripts/deploy_site.sh
+#   ./scripts/deploy_site.sh
 set -euo pipefail
 
-if [ -z "${GCS_BUCKET:-}" ]; then
-  echo "ERROR: GCS_BUCKET is not set" >&2
-  exit 2
+PROJECT_ARGS=()
+if [ -n "${FIREBASE_PROJECT:-}" ]; then
+  PROJECT_ARGS=(--project "$FIREBASE_PROJECT")
 fi
 
-export SITE_DIR="${SITE_DIR:-docs}"
-
-echo "[deploy_site] publish site files from $SITE_DIR to gs://$GCS_BUCKET/"
-python scripts/gcs_sync.py publish-site
+echo "[deploy_site] firebase deploy --only hosting"
+firebase deploy --only hosting --non-interactive "${PROJECT_ARGS[@]}"
 
 echo "[deploy_site] done"

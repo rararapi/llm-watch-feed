@@ -172,7 +172,8 @@
         <li>Microsoft Teamsの指定チャネルへメッセージを投稿します。</li>
       </ol>
       <div class="callout">
-        公開URLは <code>https://storage.googleapis.com/{バケット名}/</code> です。RSSの例は <code>https://storage.googleapis.com/{バケット名}/feeds/all.xml</code> です（独自ドメイン設定後は <code>https://news.example.com/feeds/all.xml</code> のような形になります）。
+        画面のURLは Firebase Hosting の <code>https://{プロジェクト}.web.app</code>（独自ドメインも無料で接続可）です。
+        一方 <strong>RSSフィードは公開GCSバケットが配信</strong>し、URLは <code>https://storage.googleapis.com/{バケット名}/feeds/all.xml</code> です（Power AutomateにはこのフィードURLを登録します）。
       </div>
     </section>
 
@@ -180,15 +181,15 @@
       <h2>2. 公開URLの確認</h2>
       <h3>2.1 配信を確認する</h3>
       <ol>
-        <li>デプロイ手順（<code>DEPLOY.md</code>）に従い、公開GCSバケットとCloud Run Jobを構築します。</li>
+        <li>デプロイ手順（<code>DEPLOY.md</code>）に従い、公開GCSバケット・Cloud Run Job・Firebase Hosting を構築します。</li>
         <li>ニュース更新ジョブが1回実行されると、<code>data/models.json</code> と <code>feeds/*.xml</code> がバケットへ配信されます。</li>
       </ol>
 
       <h3>2.2 公開URLへアクセスする</h3>
       <ol>
-        <li>公開URL <code>https://storage.googleapis.com/{バケット名}/index.html</code> を開きます。</li>
+        <li>画面URL <code>https://{プロジェクト}.web.app</code> を開きます。</li>
         <li>トップページに「Power Automate連携手順書」と「公開RSSフィード」が表示されることを確認します。</li>
-        <li><code>/feeds/all.xml</code> を開き、XMLが表示されることを確認します。</li>
+        <li>フィードURL <code>https://storage.googleapis.com/{バケット名}/feeds/all.xml</code> を開き、XMLが表示されることを確認します。</li>
       </ol>
 
       <div class="warning callout">
