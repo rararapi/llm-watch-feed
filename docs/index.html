@@ -275,7 +275,7 @@
 
       if (visible.length === 0) {
         status.textContent = "";
-        wrap.innerHTML = '<div class="empty-state">まだ表示できるモデル情報がありません。GitHub Actionsを実行するとRSSと一覧が更新されます。</div>';
+        wrap.innerHTML = '<div class="empty-state">まだ表示できるモデル情報がありません。収集ジョブが実行されるとRSSと一覧が更新されます。</div>';
         return;
       }
 
@@ -315,7 +315,7 @@
       } catch (error) {
         status.textContent = `読み込みエラー: ${error.message}`;
         document.getElementById("articles-wrap").innerHTML =
-          '<div class="empty-state">GitHub PagesまたはローカルHTTPサーバー経由でアクセスしてください。file:// ではデータを読み込めません。</div>';
+          '<div class="empty-state">公開URLまたはローカルHTTPサーバー経由でアクセスしてください。file:// ではデータを読み込めません。</div>';
       }
     }
 

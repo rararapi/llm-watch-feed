@@ -10,7 +10,8 @@ RSSフィードに加え、収集ニュースの要約を本サイトでも公�
 - ホスティングは**GCP で稼働**（後述「ホスティング方針」、手順は `DEPLOY.md`）
 
 > ⚠️ **方針転換中**: 本プロジェクトは当初「LLMモデル情報だけ」を対象とする静的フィード(GitHub Pages配信)としてMVPを作った。
-> **配信基盤は GCP（Cloud Run Job + Cloud Scheduler + GCS + Firebase Hosting）へ移行済み**（手順は `DEPLOY.md`）。
+> **配信基盤は GCP（Cloud Run Job + Cloud Scheduler + 公開GCSバケット）へ移行済み**（手順は `DEPLOY.md`）。
+> 配信は公開GCSバケットが直接担い、サイトの「デプロイ」は不要（ニュース更新＝GCSへの書き込み）。
 > 一方で **対象をAIニュース全般へ拡大** する方針は進行中で、現行コード（`is_model_related`判定・`models.json`という命名）は
 > 旧方針のまま残っており、段階的に見直す必要がある。
 
@@ -36,7 +37,8 @@ RSSフィードに加え、収集ニュースの要約を本サイトでも公�
 
 ## アーキテクチャ（現状）
 
-実行基盤は GCP。状態 `models.json` の正本は GCS、配信は Firebase Hosting。
+実行基盤は GCP。状態 `models.json` の正本は公開GCSバケットの `data/models.json` で、これがそのまま配信される。
+ニュース更新（毎日）とサイトデプロイ（HTML変更時のみ）は分離している。
 収集・分類のコードは旧方針（モデル関連判定）のまま残っており段階的に見直す。
 
 ```
@@ -53,17 +55,20 @@ scripts/generate_feeds.py
   - 6種類のRSS XMLを生成（出力先は環境変数 FEEDS_DIR、既定 docs/feeds/）
   - BASE_URLは環境変数SITE_URLで設定
 
-scripts/gcs_sync.py / scripts/run_job.sh
-  - run_job.sh が Cloud Run Job のエントリポイント
-  - GCSからmodels.json取得 → collect → generate → GCSへ保存 → Firebase Hostingへデプロイ
+scripts/gcs_sync.py / scripts/run_job.sh / scripts/deploy_site.sh
+  - run_job.sh が Cloud Run Job のエントリポイント（ニュース更新ジョブ）
+    GCSからmodels.json取得 → collect → generate → GCSへ data/models.json と feeds/ を書き込み
+  - gcs_sync.py のコマンド: download / upload(=配信データ) / publish-feeds / publish-site
+  - deploy_site.sh は index.html 等のサイト配信（サイト変更時のみ・ニュース更新とは独立）
 
 docs/index.html
-  - 静的HTML + Vanilla JS。Firebase Hostingで配信
+  - 静的HTML + Vanilla JS。公開GCSバケットから配信
   - window.locationからフィードURLを動的生成、./data/models.jsonをfetchして表示
 
 GCP 実行基盤（手順は DEPLOY.md）
-  - Cloud Scheduler が毎日 09:00 JST に Cloud Run Job をトリガー
-  - 状態の正本は GCS（非公開バケット）、配信は Firebase Hosting に一本化
+  - Cloud Scheduler が毎日 Cloud Run Job をトリガー
+  - 状態の正本は公開GCSバケットの data/models.json。配信は公開GCSバケットが直接担う（デプロイ不要）
+  - 独自ドメイン/きれいなURLは後追いで HTTPS ロードバランサ + Cloud CDN を前段に置いて付与（パイプライン無変更）
   - 記事分析は Vertex AI（Gemini）を ADC（実行サービスアカウント）で利用。APIキー不要
     （GCP_PROJECT 未設定/権限不足ならダミーモード）
 ```
@@ -72,13 +77,14 @@ GCP 実行基盤（手順は DEPLOY.md）
 
 ## ホスティング方針（GCP・実装済み）
 
-GitHub Pages から **GCP** へ移行済み（案①）。構築手順は `DEPLOY.md`。
+GitHub Pages から **GCP** へ移行済み。構築手順は `DEPLOY.md`。
 
 - 実行: Cloud Run Job（`scripts/run_job.sh`）＋ Cloud Scheduler（毎日）
-- 状態: GCS バケット（非公開）の `models.json` を正本に download-run-upload
-- 配信: Firebase Hosting（HTTPS・CDN）。既定ドメイン `*.web.app`、独自ドメインは後追いで追加可
+- 状態: 公開GCSバケットの `data/models.json` を正本に download-run-upload。これがそのまま配信される
+- 配信: 公開GCSバケットが直接配信（HTTPS）。サイトの「デプロイ」は不要
+- サイト分離: `index.html` 等は `scripts/deploy_site.sh` でサイト変更時のみ配信（ニュース更新と独立）
+- 独自ドメイン/きれいなURL: 後追いで HTTPS ロードバランサ + Cloud CDN + マネージドSSL を前段に置く（`DEPLOY.md` §6）。パイプラインは無変更
 - LLM: Vertex AI（Gemini）。認証は ADC（実行サービスアカウントに `roles/aiplatform.user`）。APIキー不要。未設定/権限不足ならダミーモードで完走
-- 設計判断とトレードオフの記録は `openspec/changes/deploy-to-gcp/`（proposal / design）を参照
 
 ---
 
@@ -184,10 +190,11 @@ GCP へのデプロイ・自動実行の手順は `DEPLOY.md` を参照。
 - `GCP_PROJECT` — Vertex AI のプロジェクトID（未設定ならダミー要約で動作）。認証はADCで行いAPIキーは不要
 - `VERTEX_LOCATION` — Vertex AI のリージョン（デフォルト: `us-central1`）
 - `VERTEX_MODEL` — Gemini モデル名（デフォルト: `gemini-2.5-flash`）
-- `SITE_URL` — 公開サイトのURL（generate_feeds.py用。Firebase Hosting の URL）
+- `SITE_URL` — 公開サイトのURL（generate_feeds.py用。当面はバケットURL、独自ドメイン設定後はそのURL）
 - `MODELS_JSON_PATH` / `FEEDS_DIR` — 入出力先（既定 `docs/data/models.json` / `docs/feeds/`。ジョブでは `public/` 配下）
-- `GCS_BUCKET` / `GCS_OBJECT` — 状態保存先（`scripts/gcs_sync.py` 用、クラウド実行時）
-- `FIREBASE_PROJECT` — デプロイ先プロジェクトID（`scripts/run_job.sh` 用）
+- `GCS_BUCKET` — 公開配信／状態バケット名（`scripts/gcs_sync.py` 用、クラウド実行時）
+- `GCS_OBJECT` — 状態＝配信データのキー（既定 `data/models.json`）
+- `SITE_DIR` — サイト静的ファイルのディレクトリ（`deploy_site.sh` / `publish-site` 用、既定 `docs`）
 
 ---
 

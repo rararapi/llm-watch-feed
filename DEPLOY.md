@@ -1,19 +1,30 @@
-# GCP デプロイ手順（deploy-to-gcp）
+# GCP デプロイ手順（公開GCSバケット配信）
 
-案①: **Cloud Run Job + Cloud Scheduler + GCS(非公開) + Firebase Hosting** 構成の構築手順。
-収集→生成→GCS保存→Firebase配信を毎日自動実行する。状態 `models.json` の正本は GCS、一般配信は Firebase に一本化する。
+**Cloud Run Job + Cloud Scheduler + 公開GCSバケット** 構成の構築手順。
+配信は公開GCSバケットが直接担い、**サイトの「デプロイ」は不要**（ニュース更新＝GCSへの書き込み）。
+
+パイプラインは2系統に分離している:
+
+- **ニュース更新（毎日・自動）**: 収集→生成→GCSへ `data/models.json` と `feeds/*.xml` を書き込むだけ
+- **サイトデプロイ（変更時のみ・手動/CI）**: `index.html` 等を GCS へ配信（`scripts/deploy_site.sh`）
 
 ```
-Cloud Scheduler ─毎日─▶ Cloud Run Job (このリポジトリのコンテナ)
+Cloud Scheduler ─毎日─▶ Cloud Run Job (run_job.sh)
    1.GCS→models.json取得  2.collect.py  3.generate_feeds.py
-   4.GCS→models.json保存(正本)  5.Firebase Hosting へデプロイ
-        └─ 公開: https://<project>.web.app （独自ドメインは後追いで追加可）
+   4.models.json を GCS へ保存(=公開データ)  5.feeds/ を GCS へ配信
+        └─ 公開GCSバケット（Web配信ルート）
+              ├─ index.html               ← deploy_site.sh で配信（サイト変更時のみ）
+              ├─ data/models.json         ← run_job.sh が毎日更新
+              └─ feeds/*.xml              ← run_job.sh が毎日更新
+
+独自ドメイン/きれいなURL（後追い）:
+   外部 HTTPS ロードバランサ + Cloud CDN + マネージドSSL を公開バケットの前段に置く
+        └─ https://news.example.com/feeds/all.xml の形が可能。上のパイプラインは無変更
 ```
 
 ## 前提
 
 - `gcloud` CLI 認証済み・課金有効な GCP プロジェクト
-- `firebase-tools`（ローカル初期化用。ジョブ内ではコンテナに同梱済み）
 - リポジトリ直下で作業
 
 ## 0. 変数
@@ -21,13 +32,14 @@ Cloud Scheduler ─毎日─▶ Cloud Run Job (このリポジトリのコンテ
 ```bash
 export PROJECT_ID="your-project-id"
 export REGION="asia-northeast1"          # 東京
-export BUCKET="${PROJECT_ID}-llm-watch-state"
+export BUCKET="${PROJECT_ID}-llm-watch-public"   # 公開配信バケット
 export REPO="llm-watch"                   # Artifact Registry リポジトリ
 export IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/collector:latest"
 export JOB="llm-watch-collector"
 export SA="llm-watch-job"
 export SA_EMAIL="${SA}@${PROJECT_ID}.iam.gserviceaccount.com"
-export SITE_URL="https://${PROJECT_ID}.web.app"   # 独自ドメイン取得後はそのURLに変更
+# 当面の公開URL（独自ドメイン設定後はそのURLに変更）
+export SITE_URL="https://storage.googleapis.com/${BUCKET}"
 
 gcloud config set project "$PROJECT_ID"
 ```
@@ -38,27 +50,34 @@ gcloud config set project "$PROJECT_ID"
 gcloud services enable \
   run.googleapis.com cloudscheduler.googleapis.com \
   aiplatform.googleapis.com artifactregistry.googleapis.com \
-  cloudbuild.googleapis.com storage.googleapis.com \
-  firebasehosting.googleapis.com
+  cloudbuild.googleapis.com storage.googleapis.com
 ```
 
-## 3.2 GCS バケット（非公開）作成 + 初期状態アップロード
+## 3.2 公開GCSバケット作成 + Web配信設定 + 初期データ投入
 
 ```bash
-# uniform bucket-level access = ACL無効。公開アクセスは付与しない（非公開）。
+# uniform bucket-level access = ACL無効（IAMで一元管理）
 gcloud storage buckets create "gs://${BUCKET}" \
-  --location="$REGION" --uniform-bucket-level-access \
-  --public-access-prevention
+  --location="$REGION" --uniform-bucket-level-access
+
+# 公開読み取りを付与（配信ルートにするため）
+gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
+  --member="allUsers" --role="roles/storage.objectViewer"
+
+# Webサイト設定（/ で index.html を返す。404 ページは任意）
+gcloud storage buckets update "gs://${BUCKET}" --web-main-page-suffix=index.html
 
 # 既存の収集済みデータを初期状態として引き継ぐ（任意。無ければ初回空開始でよい）
-gcloud storage cp docs/data/models.json "gs://${BUCKET}/models.json"
+[ -f docs/data/models.json ] && \
+  gcloud storage cp docs/data/models.json "gs://${BUCKET}/data/models.json"
 ```
+
+> models.json / feeds に機密は含まれない（配信前提のデータ）。バケットは公開で問題ない。
 
 ## 3.3 LLM（Vertex AI）の利用方針
 
 記事の分析・要約は Vertex AI（Gemini）で行う。**API キーは使わず**、実行サービスアカウントの
-ADC（Application Default Credentials）で認証する。よってここで登録するシークレットは無い。
-権限は次節 3.4 でサービスアカウントに `roles/aiplatform.user` を付与して与える。
+ADC（Application Default Credentials）で認証する。権限は次節 3.4 で `roles/aiplatform.user` を付与する。
 
 > `GCP_PROJECT` 未設定や権限不足のままでもジョブはダミーモードで完走する（段階導入可）。
 
@@ -74,13 +93,6 @@ gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
 # Vertex AI: 推論呼び出しに必要な最小ロール
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" --role="roles/aiplatform.user"
-
-# Firebase Hosting デプロイ権限（ジョブ内 firebase deploy が ADC で使用）
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:${SA_EMAIL}" --role="roles/firebasehosting.admin"
-# firebase-tools が ADC でプロジェクトを解決するために必要
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:${SA_EMAIL}" --role="roles/serviceusage.serviceUsageConsumer"
 ```
 
 ## 4.1 イメージのビルド & push
@@ -99,7 +111,7 @@ gcloud builds submit --tag "$IMAGE"
 gcloud run jobs create "$JOB" \
   --image="$IMAGE" --region="$REGION" \
   --service-account="$SA_EMAIL" \
-  --set-env-vars="GCS_BUCKET=${BUCKET},FIREBASE_PROJECT=${PROJECT_ID},SITE_URL=${SITE_URL},GCP_PROJECT=${PROJECT_ID},VERTEX_LOCATION=${REGION},VERTEX_MODEL=gemini-2.5-flash" \
+  --set-env-vars="GCS_BUCKET=${BUCKET},SITE_URL=${SITE_URL},GCP_PROJECT=${PROJECT_ID},VERTEX_LOCATION=${REGION},VERTEX_MODEL=gemini-2.5-flash" \
   --max-retries=1 --task-timeout=600
 # 既存更新時は `gcloud run jobs update "$JOB" ...`
 ```
@@ -108,8 +120,9 @@ gcloud run jobs create "$JOB" \
 
 ```bash
 gcloud run jobs execute "$JOB" --region="$REGION" --wait
-# 確認: GCS の models.json 更新、Firebase 公開
-gcloud storage cat "gs://${BUCKET}/models.json" | head
+# 確認: GCS のデータ更新
+gcloud storage cat "gs://${BUCKET}/data/models.json" | head
+curl -s "${SITE_URL}/feeds/all.xml" | head
 ```
 
 ## 4.4 Cloud Scheduler（毎日）
@@ -128,57 +141,86 @@ gcloud scheduler jobs create http "${JOB}-daily" \
   --http-method=POST \
   --oauth-service-account-email="${SA_EMAIL}"
 ```
-> cron `0 0 * * *` (Asia/Tokyo) = 毎日 09:00 JST 相当に揃える場合は `--schedule="0 9 * * *"` に調整。
+> cron `0 9 * * *` (Asia/Tokyo) にすれば毎日 09:00 JST。
 
-## 5. Firebase Hosting（既定ドメインで稼働開始）
+## 5. サイトデプロイ（初回・変更時のみ）
 
-初回のみローカルで Hosting サイトを有効化する（`firebase.json` は本リポジトリに同梱済み）。
+サイトの静的ファイル（`index.html` 等）はニュース更新とは独立して配信する。
+**初回に一度実行**し、以降は**サイトの見た目・JS を変更したときだけ**実行すればよい。
 
 ```bash
-firebase login
-firebase projects:addfirebase "$PROJECT_ID"   # 既にFirebase化済みなら不要
-firebase hosting:sites:list --project "$PROJECT_ID"
+# ローカルから（ADC で認証。bucket への objectAdmin 権限が要る）
+gcloud auth application-default login   # 初回のみ
+pip install -r requirements-job.txt     # google-cloud-storage を含む
+GCS_BUCKET="$BUCKET" ./scripts/deploy_site.sh
 ```
-以降の通常デプロイはジョブ(`run_job.sh` の step5)が自動実行する。
-公開URL: `https://${PROJECT_ID}.web.app`（HTTPS）。サイト・各フィードURLにアクセスして確認する。
 
-### 5.5/5.6 独自ドメイン（任意・後追い）
+公開URL: `https://storage.googleapis.com/${BUCKET}/index.html`（HTTPS）。
+各フィードは `https://storage.googleapis.com/${BUCKET}/feeds/all.xml` 等。
+> CI で自動化する場合は、`docs/` 配下の変更時のみ `deploy_site.sh` を走らせるようにする。
 
-1. ドメインを取得し DNS を管理下に置く。
-2. `firebase hosting:sites` のサイトに対し Firebase コンソール / CLI でカスタムドメインを追加し、提示される
-   DNS レコードを設定 → 証明書自動発行を待つ。
-3. `SITE_URL` を独自ドメインに更新し、`gcloud run jobs update "$JOB" --set-env-vars=SITE_URL=...` で反映。
+## 6. 独自ドメイン・きれいなURL（後追い）
 
-## 5.9 ローカルから Vertex AI を呼ぶ（開発時）
+公開バケットの前段に **外部 HTTPS ロードバランサ + Cloud CDN + マネージドSSL** を置くと、
+`https://news.example.com/feeds/all.xml` のようなクリーンなURLで配信できる。
+**パイプライン（ニュース更新・サイトデプロイ）は一切変更不要**で、バックエンドが同じ公開バケットを指す。
 
-ローカル実行でも本番と同じ ADC で Gemini を叩ける。初回のみ認証し、`GCP_PROJECT` を渡す。
+概略手順:
 
 ```bash
-gcloud auth application-default login          # 一度だけ。ブラウザで認証
-export GCP_PROJECT="$PROJECT_ID"               # .env に GCP_PROJECT=... でも可
-# 任意: export VERTEX_LOCATION=us-central1  VERTEX_MODEL=gemini-2.5-flash
-python scripts/collect.py                      # ログに "Using Vertex AI model: ..." が出れば成功
+# 1) バックエンドバケット（CDN 有効）
+gcloud compute backend-buckets create llm-watch-bb \
+  --gcs-bucket-name="$BUCKET" --enable-cdn
+
+# 2) URL マップ → ターゲット HTTPS プロキシ → グローバル転送ルール（IP 確保）
+gcloud compute url-maps create llm-watch-lb --default-backend-bucket=llm-watch-bb
+gcloud compute addresses create llm-watch-ip --global
+
+# 3) マネージドSSL証明書（取得済みドメインを指定）
+gcloud compute ssl-certificates create llm-watch-cert \
+  --domains="news.example.com" --global
+gcloud compute target-https-proxies create llm-watch-proxy \
+  --url-map=llm-watch-lb --ssl-certificates=llm-watch-cert
+gcloud compute forwarding-rules create llm-watch-fr \
+  --global --target-https-proxy=llm-watch-proxy \
+  --address=llm-watch-ip --ports=443
+
+# 4) 確保した IP を取得し、ドメインの A レコードに設定 → 証明書 PROVISIONING 完了を待つ
+gcloud compute addresses describe llm-watch-ip --global --format='value(address)'
 ```
-> `GCP_PROJECT` を渡さなければダミーモードで動く（認証不要）。ログイン中のアカウントにも
-> プロジェクトでの `roles/aiplatform.user` 相当の権限が必要。`aiplatform.googleapis.com` が
-> 未有効だと呼び出しが弾かれるため、3.1 の API 有効化を先に済ませておく。
 
-## 6. セキュリティ検収
+ドメイン稼働後:
 
 ```bash
-# 公開物にキーが無いこと（デプロイ済み公開ファイルを取得して確認）
+# フィードの自己リンクを独自ドメインに合わせて更新（次回のニュース更新で反映される）
+gcloud run jobs update "$JOB" --region="$REGION" \
+  --update-env-vars="SITE_URL=https://news.example.com"
+```
+
+> ロードバランサは月額の最低料金が発生する（転送ルール課金）。ドメイン公開が必要になるまでは
+> 当面 `storage.googleapis.com/<bucket>/...` の直URLで運用してよい（HTTPSで配信される）。
+
+## 7. セキュリティ検収
+
+```bash
+# 公開物にキーが無いこと
 curl -s "${SITE_URL}/data/models.json" | grep -i "sk-" || echo "no key in models.json ✓"
 # Run ログにキー平文が出ていないこと
 gcloud logging read "resource.type=cloud_run_job AND textPayload:sk-" --limit=5 --project "$PROJECT_ID"
 ```
 
-## 7. 旧構成の撤去（数サイクル並行運用で安定確認後）
+## 8. 旧 Firebase 構成からの移行
 
-- `.github/workflows/collect.yml` を撤去（または手動実行用に縮小）
-- GitHub Pages を停止（必要なら旧URLに新フィードURLの案内を残す）
-- `README.md` / `CLAUDE.md` の実行・配信手順を GCP 構成へ更新
+旧構成（Firebase Hosting + 非公開状態バケット）から移る場合:
+
+1. 旧状態バケットの `models.json` を新公開バケットの `data/models.json` へコピー
+   （`gcloud storage cp gs://OLD/models.json gs://${BUCKET}/data/models.json`）。
+2. 本手順でジョブ・スケジューラを更新（`FIREBASE_PROJECT` 環境変数は不要・削除）。
+3. `deploy_site.sh` でサイトを初回配信。
+4. 数サイクル安定確認後、旧 Firebase Hosting サイトと旧スケジューラを停止。
+   旧URLには新URL（バケット or 独自ドメイン）への案内を残すとよい。
 
 ## ロールバック
 
-移行完了までは GitHub Actions + Pages を残す。問題時は `gcloud scheduler jobs pause "${JOB}-daily" --location="$REGION"` で停止し旧構成へ戻す。
-GCS の `models.json` が正本のため、旧構成へ戻す場合はその時点の JSON を `docs/data/models.json` に戻して commit する。
+`gcloud scheduler jobs pause "${JOB}-daily" --location="$REGION"` で毎日更新を停止できる。
+状態の正本は `gs://${BUCKET}/data/models.json` なので、必要ならその時点のJSONを差し替える。
