@@ -10,6 +10,10 @@ RUN pip install --no-cache-dir -r requirements-job.txt
 
 COPY scripts/ ./scripts/
 COPY docs/ ./docs/
+# generate_pages.py（run_job.sh のステップ4）が読む Jinja2 テンプレートとサイト静的物。
+# これらが無いとジョブが generate_pages で失敗するため必ず同梱する。
+COPY templates/ ./templates/
+COPY assets/ ./assets/
 RUN chmod +x scripts/run_job.sh scripts/deploy_site.sh
 
 ENTRYPOINT ["scripts/run_job.sh"]
