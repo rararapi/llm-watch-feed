@@ -45,6 +45,8 @@ MODELS_JSON_PATH = Path(os.environ.get("MODELS_JSON_PATH", "docs/data/models.jso
 PAGES_DIR = Path(os.environ.get("PAGES_DIR", "docs"))
 TEMPLATES_DIR = Path(os.environ.get("TEMPLATES_DIR", "templates"))
 ASSETS_DIR = Path(os.environ.get("ASSETS_DIR", "assets/site"))
+STATIC_PAGES_DIR = Path(os.environ.get("STATIC_PAGES_DIR", "docs"))
+STATIC_PAGE_FILES = ["power-automate.html"]
 
 # content のある言語だけ出力する。collect.py が en を出すようになったら "en" を足す
 LANGUAGES = ["ja"]
@@ -206,6 +208,20 @@ def copy_assets() -> None:
     logger.info(f"Copied assets {ASSETS_DIR} -> {PAGES_DIR / 'assets'}")
 
 
+def copy_static_pages() -> None:
+    for name in STATIC_PAGE_FILES:
+        src = STATIC_PAGES_DIR / name
+        dst = PAGES_DIR / name
+        if not src.exists():
+            logger.warning(f"{src} not found — skipping static page copy")
+            continue
+        if src.resolve() == dst.resolve():
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        logger.info(f"Copied static page {src} -> {dst}")
+
+
 def main() -> None:
     if not MODELS_JSON_PATH.exists():
         logger.warning("models.json not found — generating empty site")
@@ -226,6 +242,7 @@ def main() -> None:
     env = _build_env()
 
     copy_assets()
+    copy_static_pages()
     render_index(env, visible)
     render_subscribe(env)
 
