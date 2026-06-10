@@ -48,7 +48,7 @@ PAGES_DIR = Path(os.environ.get("PAGES_DIR", "docs"))
 SITE_DIR = Path(os.environ.get("SITE_DIR", "docs"))
 
 # publish-site で配信するサイト静的ファイル（SITE_DIR 直下からの相対パス）
-SITE_FILES = ["index.html", "power-automate.html"]
+SITE_FILES = ["index.html", "subscribe.html", "power-automate.html"]
 
 # 配信物の Content-Type を拡張子から補強する（GCS のレンジ配信/CDN 向け）
 _CONTENT_TYPES = {
@@ -142,7 +142,7 @@ def publish_pages() -> None:
         sys.exit(1)
 
     published = 0
-    for name in ("index.html", "subscribe.html"):
+    for name in SITE_FILES:
         local = PAGES_DIR / name
         if local.exists():
             _upload_file(local, name)
