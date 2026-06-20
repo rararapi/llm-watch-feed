@@ -1,10 +1,9 @@
-"""Generate the static site (index + per-article OGP pages + subscribe) from models.json.
+“””Generate the static site (index + per-article OGP pages + subscribe) from models.json.
 
 トップ/購読ページに加え、SNS共有用の「OGPを焼き込んだ個別記事ページ」を事前生成する。
-出力は PAGES_DIR 以下で、そのディレクトリは公開GCSバケット直下のミラーになる
-（= 各ファイルの相対パス = GCSオブジェクトキー = {SITE_URL}/<key>）。RSSと同じく日次バッチで
-生成・配信され、サイトの「デプロイ」は不要（feeds と同じ“バッチ生成物”として扱う）。
-"""
+出力は PAGES_DIR 以下で、firebase_hosting_deploy.py が Firebase Hosting へ日次デプロイする。
+公開URL は SITE_URL（https://ai-watch-feed.web.app）基準。
+“””
 
 import hashlib
 import json
@@ -34,10 +33,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# OGP/canonical/asset の絶対URL基準。記事が実際に配信されるGCSオリジンを指す（SITE_URL を再利用）
+# OGP/canonical/asset の絶対URL基準。Firebase Hosting の公開URL（SITE_URL）
 SITE_URL = os.environ.get(
     "SITE_URL", "https://storage.googleapis.com/your-bucket"
 ).rstrip("/")
+# フィードファイルの配信元URL（GCS）。SITE_URL（Firebase）とは別に保持する。
+FEEDS_BASE_URL = os.environ.get("FEEDS_BASE_URL", SITE_URL).rstrip("/")
 SITE_NAME = os.environ.get("SITE_NAME", "AI News Watch")
 SITE_TAGLINE = os.environ.get("SITE_TAGLINE", "AIニュースを自動収集・要約してお届け")
 
@@ -80,6 +81,7 @@ def _build_env() -> Environment:
     env.globals["site_name"] = SITE_NAME
     env.globals["site_tagline"] = SITE_TAGLINE
     env.globals["site_url"] = SITE_URL
+    env.globals["feeds_base_url"] = FEEDS_BASE_URL
     return env
 
 

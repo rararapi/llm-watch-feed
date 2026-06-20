@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 BASE_URL = os.environ.get(
     "SITE_URL", "https://storage.googleapis.com/your-bucket"
 ).rstrip("/")
+# フィードファイル自体の配信元URL（atom:link rel="self" に使う）。
+# フィードは GCS に置くため SITE_URL（Firebase）とは別に設定する。
+FEEDS_BASE_URL = os.environ.get("FEEDS_BASE_URL", BASE_URL).rstrip("/")
 MODELS_JSON_PATH = Path(os.environ.get("MODELS_JSON_PATH", "docs/data/models.json"))
 FEEDS_DIR = Path(os.environ.get("FEEDS_DIR", "docs/feeds"))
 MAX_ITEMS_PER_FEED = 50
@@ -105,7 +108,7 @@ def generate_feed(filename: str, config: dict, articles: list[dict]) -> None:
         reverse=True,
     )[:MAX_ITEMS_PER_FEED]
 
-    feed_url = f"{BASE_URL}/feeds/{filename}"
+    feed_url = f"{FEEDS_BASE_URL}/feeds/{filename}"
     now = format_datetime(datetime.now(timezone.utc))
 
     item_blocks = []

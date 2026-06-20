@@ -67,20 +67,21 @@ scripts/generate_feeds.py
 scripts/generate_pages.py
   - models.json から Jinja2 でサイトを静的生成（SSG）: index.html / subscribe.html /
     articles/<id>.html（SNS共有用にOGP・Twitter Card・JSON-LDを焼き込んだ個別記事ページ）/ assets
-  - 出力先は環境変数 PAGES_DIR（既定 docs、ジョブでは public）。PAGES_DIR は公開GCSバケット直下の
-    ミラー（各ファイルの相対パス = GCSオブジェクトキー = {SITE_URL}/<key>）
+  - 出力先は環境変数 PAGES_DIR（既定 docs、ジョブでは public）。firebase_hosting_deploy.py が
+    PAGES_DIR の内容を Firebase Hosting へデプロイする（{SITE_URL}/<key> でアクセス可能）
   - テンプレートは templates/、サイト静的物は assets/site/。OGP/canonical/内部リンクは SITE_URL 基準の絶対URL
   - 表示対象は重要度A/B。1記事の描画失敗で全体が落ちない（try/except）
   - 一覧の絞り込み（重要度/ソース/キーワード）はサーバ生成カードを vanilla JS で表示切替
 
-scripts/gcs_sync.py / scripts/run_job.sh / scripts/deploy_site.sh
+scripts/gcs_sync.py / scripts/run_job.sh / scripts/deploy_site.sh / scripts/firebase_hosting_deploy.py
   - run_job.sh が Cloud Run Job のエントリポイント（ニュース更新ジョブ）
     GCSからmodels.json取得 → collect → generate_images → generate_feeds → generate_pages →
-    GCSへ data/models.json・feeds/・サイト(index/articles/assets) を書き込み（画像は images/ へ直接）
+    GCSへ data/models.json・feeds/ を書き込み（画像は images/ へ直接）→ Firebase Hosting へ画面デプロイ
   - gcs_sync.py のコマンド: download / upload(=配信データ) / publish-feeds /
-    publish-pages(=生成サイトを配信) /（publish-site はGCS配信時の予備）
-  - deploy_site.sh は画面(index/subscribe/assets)を generate_pages.py で再生成してから
-    Firebase Hosting へデプロイ（テンプレ/デザイン変更時のみ・ニュース更新とは独立）
+    publish-pages(手動バックアップ用) /（publish-site はGCS配信時の予備）
+  - firebase_hosting_deploy.py は生成済みサイト(index/subscribe/articles/assets)を
+    Firebase Hosting REST API で日次デプロイ（Node.js 不要・追加pip依存なし）
+  - deploy_site.sh はローカル手動デプロイ用（firebase CLI 経由）
 
 docs/（サイト出力。templates/ + assets/site/ がソース。生成物はgitignore）
   - index.html / subscribe.html / articles/<id>.html / assets を generate_pages.py が生成
@@ -101,11 +102,11 @@ GCP 実行基盤（手順は DEPLOY.md）
 
 GitHub Pages から **GCP** へ移行済み。構築手順は `DEPLOY.md`。
 
-- 構成: 方式A（画面=Firebase Hosting、データ/フィード=公開GCSバケット）
+- 構成: 方式A（画面=Firebase Hosting、データ/フィード/AI画像=公開GCSバケット）
 - 実行: Cloud Run Job（`scripts/run_job.sh`）＋ Cloud Scheduler（毎日）
 - 状態: 公開GCSバケットの `data/models.json` を正本に download-run-upload。これがそのまま配信される
-- データ/フィード配信: 公開GCSバケット（HTTPS・CORS設定済み）。ニュース更新はGCS書き込みのみで「デプロイ」不要
-- 画面配信: Firebase Hosting（無料HTTPS）。`scripts/deploy_site.sh`（= `firebase deploy`）でサイト変更時のみデプロイ
+- データ/フィード/AI画像配信: 公開GCSバケット（HTTPS・CORS設定済み）。Storage はデータのみに使用
+- 画面配信: Firebase Hosting（無料HTTPS）。`scripts/firebase_hosting_deploy.py`（REST API）が日次で自動デプロイ
 - 公開URL: 画面 `https://ai-watch-feed.web.app`、フィード `https://storage.googleapis.com/ai-watch-feed-llm-watch-public/feeds/*.xml`
 - 独自ドメイン: Firebase Hosting に無料で接続可（ドメイン自体の取得は別途）。フィードURLはGCSのまま（綺麗にするには有料の方式B=LB/CDN or rewrite が必要）
 - LLM: Vertex AI（Gemini）。認証は ADC（実行サービスアカウントに `roles/aiplatform.user`）。APIキー不要。未設定/権限不足ならダミーモードで完走
@@ -244,8 +245,10 @@ GCP へのデプロイ・自動実行の手順は `DEPLOY.md` を参照。
 - `IMAGE_MIN_IMPORTANCE` — AI画像生成の対象重要度（デフォルト: `A`）
 - `IMAGE_MAX_PER_RUN` — 1回の実行で生成する最大枚数（デフォルト: `5`）
 - `IMAGE_BASE_URL` — AI画像URLのベース（デフォルト: `https://storage.googleapis.com/<GCS_BUCKET>`）
-- `SITE_URL` — 配信物の絶対URL基準（generate_feeds.py のフィード自己リンク＋generate_pages.py の
-  OGP/canonical/asset/内部リンク。＝記事が配信される公開GCSオリジン。当面はバケットURL、独自ドメイン設定後はそのURL）
+- `SITE_URL` — サイトの絶対URL基準（generate_pages.py の OGP/canonical/asset/内部リンク、
+  generate_feeds.py の `<channel><link>`。Firebase Hosting URL: `https://ai-watch-feed.web.app`）
+- `FEEDS_BASE_URL` — フィードファイルの配信元URL（generate_feeds.py の `atom:link rel="self"`）。
+  フィードは GCS に置くため SITE_URL とは別に設定する（`https://storage.googleapis.com/<bucket>`）
 - `SITE_NAME` / `SITE_TAGLINE` — サイトのブランド表記（generate_pages.py。既定 `AI News Watch` / タグライン）
 - `MODELS_JSON_PATH` / `FEEDS_DIR` / `PAGES_DIR` — 入出力先（既定 `docs/data/models.json` / `docs/feeds/` /
   `docs`。ジョブでは `public/` 配下。PAGES_DIR はサイト生成先＝バケット直下のミラー）
