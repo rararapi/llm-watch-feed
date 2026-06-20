@@ -1,10 +1,9 @@
 name: Deploy on merge to main
 
-# main へのマージ（= push）で自動デプロイする。
-#   - docs/ など画面の変更 → Firebase Hosting へデプロイ
-#   - scripts/ や Dockerfile の変更 → Cloud Run Job のイメージを再ビルド＆ジョブ更新
-# 変更箇所に応じて必要なジョブだけが走る（paths-filter）。
-# 毎日のニュース更新は Cloud Scheduler が回すのでここでは扱わない。
+# main へのマージ（= push）で Cloud Run Job のイメージを自動再ビルド・更新する。
+#
+# Firebase Hosting へのデプロイは Cloud Run Job（run_job.sh）が日次で行うため、
+# ここでは扱わない。テンプレート/デザイン変更は次回日次実行（最大24時間後）に反映される。
 #
 # 認証は Workload Identity Federation（鍵レス）。事前準備は DEPLOY.md「CI 自動デプロイ」を参照。
 # 必要な GitHub Secrets:
@@ -29,7 +28,6 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      site: ${{ steps.filter.outputs.site }}
       job: ${{ steps.filter.outputs.job }}
     steps:
       - uses: actions/checkout@v4
@@ -37,10 +35,6 @@ jobs:
         id: filter
         with:
           filters: |
-            site:
-              - 'docs/**'
-              - 'firebase.json'
-              - '.firebaserc'
             job:
               - 'scripts/**'
               - 'Dockerfile'
@@ -49,33 +43,7 @@ jobs:
               - 'requirements*.txt'
               - 'templates/**'     # generate_pages.py のテンプレ（イメージに COPY）
               - 'assets/**'        # サイト静的物（イメージに COPY）
-              - 'docs/**'   # docs/ はイメージにも COPY されるためジョブも再ビルド対象
-
-  deploy-site:
-    needs: changes
-    if: needs.changes.outputs.site == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_DEPLOY_SA }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Deploy to Firebase Hosting
-        # auth ステップが GOOGLE_APPLICATION_CREDENTIALS を export 済み。firebase CLI はそれを使う。
-        run: |
-          npm install -g firebase-tools
-          firebase deploy --only hosting --non-interactive --project "$PROJECT_ID"
+              - 'docs/**'          # docs/ はイメージにも COPY されるためジョブも再ビルド対象
 
   deploy-job:
     needs: changes

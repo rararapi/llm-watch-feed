@@ -1,13 +1,11 @@
-"""GCS sync helper. 公開GCSバケットを唯一の配信元にする構成のI/Oを担う。
+"""GCS sync helper. GCSバケットをデータ/フィード/AI画像の配信元にする構成のI/Oを担う。
 
-バケットは Web 配信ルートを兼ねる（独自ドメインは後段の HTTPS ロードバランサ + Cloud CDN で付与）。
-パイプラインは2系統に分離している:
-
-- ニュース更新（毎日）: download → collect/generate → upload(状態=配信データ) → publish-feeds → publish-pages
-- サイトデプロイ（変更時のみ）: publish-site
+画面（HTML/assets）は Firebase Hosting が配信し、GCS はデータのみを保持する。
+ニュース更新パイプライン:
+  download → collect/generate → upload(状態=配信データ) → publish-feeds → [Firebase deploy は firebase_hosting_deploy.py]
 
 状態 models.json の正本は `gs://<bucket>/<GCS_OBJECT>`（既定 data/models.json）であり、
-これがそのまま公開配信される（中身に機密は無い）。
+これがそのまま公開配信される（中身に機密は無い）。publish-pages は手動バックアップ用に残す。
 
 環境変数:
 - GCS_BUCKET       配信／状態バケット名（必須）

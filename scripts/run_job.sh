@@ -9,16 +9,17 @@
 #   5. generate_pages.py でサイト(index/articles/assets)生成
 #   6. 更新後 models.json を GCS へ保存（＝公開配信データ data/models.json）
 #   7. RSS フィードを GCS の feeds/ へ配信
-#   8. 生成サイト(index/articles/assets)を GCS へ配信
+#   8. 生成サイト(index/articles/assets)を Firebase Hosting へデプロイ
 #
-# このジョブは「ニュース更新」だけを行う。記事ページHTMLは feeds と同じ“バッチ生成物”として
-# GCSへ書き込むだけで、サイトの「デプロイ」ではない（firebase deploy は走らない）。
-# 画面テンプレ/デザイン変更時のデプロイは scripts/deploy_site.sh に分離してある。
+# Storage はデータ（data/models.json・feeds/・images/）のみ。HTML画面は Firebase Hosting が配信。
+# テンプレ/デザイン変更は次回日次実行（最大24時間後）に Firebase へ反映される。
 #
 # 必須環境変数:
 #   GCS_BUCKET        配信／状態バケット名
-#   SITE_URL          公開サイトURL（generate_feeds.py のフィード自己リンク用。独自ドメイン or バケットURL）
+#   SITE_URL          公開サイトURL（Firebase Hosting URL: https://ai-watch-feed.web.app）
 #   GCP_PROJECT       Vertex AI のプロジェクト ID（未設定ならダミーモードで完走）
+# Firebase:
+#   FIREBASE_SITE_ID  Firebase Hosting サイト ID（既定: ai-watch-feed）
 # 任意:
 #   VERTEX_LOCATION   Vertex AI リージョン（既定 us-central1）
 #   VERTEX_MODEL      Gemini モデル名（既定 gemini-2.5-flash）
@@ -30,7 +31,7 @@
 set -euo pipefail
 
 PUBLIC_DIR="${PUBLIC_DIR:-public}"
-# 配信レイアウトに合わせた出力先。PAGES_DIR は GCS バケット直下のミラー（data/ と feeds/ はその配下）
+# サイト生成先。firebase_hosting_deploy.py がこのディレクトリを Firebase Hosting へデプロイする。
 export MODELS_JSON_PATH="${MODELS_JSON_PATH:-$PUBLIC_DIR/data/models.json}"
 export FEEDS_DIR="${FEEDS_DIR:-$PUBLIC_DIR/feeds}"
 export PAGES_DIR="${PAGES_DIR:-$PUBLIC_DIR}"
@@ -58,7 +59,7 @@ python scripts/gcs_sync.py upload
 echo "[run_job] 7/8 publish feeds to GCS"
 python scripts/gcs_sync.py publish-feeds
 
-echo "[run_job] 8/8 publish site pages to GCS"
-python scripts/gcs_sync.py publish-pages
+echo "[run_job] 8/8 deploy site pages to Firebase Hosting"
+python scripts/firebase_hosting_deploy.py
 
 echo "[run_job] done"

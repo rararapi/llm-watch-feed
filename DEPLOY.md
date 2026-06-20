@@ -1,37 +1,28 @@
-# GCP デプロイ手順（方式A: Firebase画面 + 公開GCSデータ）
+# GCP デプロイ手順（方式A: Firebase Hosting + 公開GCSデータ）
 
 構成は **方式A**:
 
-- **画面(index/subscribe)** … Firebase Hosting が綺麗なURLで入口提供（無料HTTPS、`*.web.app`、独自ドメイン可）
-- **データ(`data/models.json`)・RSS(`feeds/*.xml`)・個別記事ページ(`articles/*.html`)・サイト(`index.html` 等)** … 公開GCSバケットが配信
-- **ニュース更新** … Cloud Run Job が GCS へ書き込むだけ（**サイトのデプロイ不要**）。記事ページHTMLは feeds と同じ“バッチ生成物”
-- **サイトデプロイ** … テンプレ/CSS/JS を変えたときだけ `deploy_site.sh`（= 画面を再生成して `firebase deploy`。ニュース更新とは独立）
+- **画面全体（index/subscribe/articles/assets）** … Firebase Hosting が配信（無料HTTPS、`*.web.app`、独自ドメイン可）。Cloud Run Job が日次デプロイ（`firebase_hosting_deploy.py` 経由）
+- **データ(`data/models.json`)・RSS(`feeds/*.xml`)・AI画像(`images/*.webp`)** … 公開GCSバケットが配信（Storage はデータのみ）
+- **ニュース更新** … Cloud Run Job が GCS（data/feeds/images）＋ Firebase Hosting（画面）へ書き込む
 
 ```
 Cloud Scheduler ─毎日─▶ Cloud Run Job (run_job.sh)
    1.GCS→models.json取得  2.collect.py  3.generate_images.py  4.generate_feeds.py  5.generate_pages.py
-   6.data/models.json をGCSへ保存  7.feeds/ をGCSへ配信  8.サイト(index/articles/assets)をGCSへ配信
-        └─ 公開GCSバケット（data/ + feeds/ + images/ + index.html/subscribe.html/articles/ + assets/ をHTTPS配信, CORS有効）
+   6.data/models.json をGCSへ保存  7.feeds/ をGCSへ配信  8.サイト(index/articles/assets)をFirebase Hostingへデプロイ
+        └─ 公開GCSバケット（data/ + feeds/ + images/ をHTTPS配信, CORS有効）
            AI画像は generate_images.py が images/<id>.webp へ直接アップロード（不変キャッシュ・重要度A）
 
-Firebase Hosting ──▶ index.html / subscribe.html / assets / power-automate.html（画面の入口）
-   記事ページ(articles/<id>.html)・データ・フィードは GCS の絶対URLを参照
-        └─ 公開URL: https://<project>.web.app （独自ドメインは無料で接続可）
+Firebase Hosting（firebase_hosting_deploy.py が日次デプロイ）
+   ├─ index.html / subscribe.html / articles/<id>.html / assets / power-automate.html
+   └─ 公開URL: https://ai-watch-feed.web.app （独自ドメインは無料で接続可）
 ```
 
-> なぜ分かれるか: Firebase Hosting は「デプロイした不変スナップショット」を配信するため、毎回更新される
-> データ/フィード/記事ページを載せると更新のたびにデプロイが要る。これらを公開GCSバケット（その場で上書き配信）に
-> 置くことで、ニュース更新を「GCS書き込みのみ・デプロイ不要」に保つ。
->
 > 記事ページのOGP/共有URL: SNSクローラはJSを実行しないため、個別記事ページは generate_pages.py が
-> OGP/Twitter Card/JSON-LD を焼き込んだ**静的HTML**として事前生成し、GCSへ日次配信する。共有URL・`og:url`・
-> canonical は配信元の GCS 絶対URL（`https://storage.googleapis.com/<bucket>/articles/<id>.html`）になる。
-> 機能はするが長くハッシュIDなので、綺麗な共有URLにするには後続フェーズ（独自ドメイン＝方式B=LB/CDN or rewrite、
-> および記事IDのスラッグ化）が必要。OGP画像は当面 `assets/img/og-default.png` の共通バナー1枚（記事ごとの
-> 画像生成は後続フェーズ＝Pillow等が必要なため見送り）。
+> OGP/Twitter Card/JSON-LD を焼き込んだ**静的HTML**として事前生成し、Firebase Hosting へ日次デプロイする。
+> 共有URL・`og:url`・canonical は Firebase Hosting の URL（`https://ai-watch-feed.web.app/articles/<id>.html`）。
 >
-> 実クローラ検証（X Card Validator / Slack unfurl 等）は**GCS publish後の公開URL**に対して行うこと
-> （ローカルプレビューではOGP markup の有無までしか確認できない）。
+> 実クローラ検証（X Card Validator / Slack unfurl 等）は**デプロイ後の Firebase 公開URL**に対して行うこと。
 
 ## 前提
 
@@ -51,7 +42,8 @@ export JOB="llm-watch-collector"
 export SA="llm-watch-job"
 export SA_EMAIL="${SA}@${PROJECT_ID}.iam.gserviceaccount.com"
 # フィードの自己リンク用。フィードはGCSにあるのでバケットURLを指す
-export SITE_URL="https://storage.googleapis.com/${BUCKET}"
+export SITE_URL="https://ai-watch-feed.web.app"
+export FIREBASE_SITE_ID="ai-watch-feed"
 
 gcloud config set project "$PROJECT_ID"
 ```
@@ -107,10 +99,11 @@ gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
 # Vertex AI: 推論呼び出しに必要な最小ロール
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${SA_EMAIL}" --role="roles/aiplatform.user"
-```
 
-> Firebase Hosting デプロイ（`deploy_site.sh`）は開発者/CI が `firebase` CLI で行うため、
-> ジョブ用 SA に Firebase 権限は不要。
+# Firebase Hosting: 日次デプロイ（firebase_hosting_deploy.py）に必要
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SA_EMAIL}" --role="roles/firebasehosting.admin"
+```
 
 ## 4.1 イメージのビルド & push
 
@@ -127,7 +120,7 @@ gcloud builds submit --tag "$IMAGE"
 gcloud run jobs create "$JOB" \
   --image="$IMAGE" --region="$REGION" \
   --service-account="$SA_EMAIL" \
-  --set-env-vars="GCS_BUCKET=${BUCKET},SITE_URL=${SITE_URL},GCP_PROJECT=${PROJECT_ID},VERTEX_LOCATION=us-central1,VERTEX_MODEL=gemini-2.5-flash,VERTEX_IMAGE_MODEL=gemini-2.5-flash-image,IMAGE_MIN_IMPORTANCE=A,IMAGE_MAX_PER_RUN=5" \
+  --set-env-vars="GCS_BUCKET=${BUCKET},SITE_URL=${SITE_URL},FEEDS_BASE_URL=https://storage.googleapis.com/${BUCKET},FIREBASE_SITE_ID=${FIREBASE_SITE_ID},GCP_PROJECT=${PROJECT_ID},VERTEX_LOCATION=us-central1,VERTEX_MODEL=gemini-2.5-flash,VERTEX_IMAGE_MODEL=gemini-2.5-flash-image,IMAGE_MIN_IMPORTANCE=A,IMAGE_MAX_PER_RUN=5" \
   --max-retries=1 --task-timeout=1800
 # 既存更新時は `gcloud run jobs update "$JOB" ...`（FIREBASE_PROJECT は使わない）
 # AI画像生成は GCS_BUCKET（公開バケット）と roles/aiplatform.user で動作。images/<id>.webp に
@@ -170,10 +163,9 @@ firebase hosting:sites:list --project "$PROJECT_ID"   # サイト確認
 GCS_BUCKET="$BUCKET" ./scripts/deploy_site.sh         # 最新 models.json を取得→画面再生成→firebase deploy
 ```
 
-公開URL: `https://${PROJECT_ID}.web.app`（HTTPS）。
-記事ページ・データ・フィードは **公開GCSバケットの絶対URL**（`SITE_URL`）を参照する。
-バケット名やドメインを変えた場合は `SITE_URL` を更新して再生成・再デプロイする。
-記事ページ(`articles/*.html`)は Firebase には載せず、GCSが日次配信する（OGP共有URLはGCSの絶対URL）。
+公開URL: `https://ai-watch-feed.web.app`（HTTPS）。
+Cloud Run Job が日次で `firebase_hosting_deploy.py` を呼び出し、index.html・articles・assets を Firebase へデプロイするため、
+手動デプロイは初回確認または緊急時のみ。バケット名やドメインを変えた場合は `SITE_URL` を更新して再生成・再デプロイする。
 
 ## 6. 独自ドメイン（任意・無料）
 
@@ -192,28 +184,24 @@ Firebase Hosting に独自ドメインを**無料で接続**できる（HTTPS証
 ## 7. セキュリティ検収
 
 ```bash
-curl -s "${SITE_URL}/data/models.json" | grep -i "sk-" || echo "no key in models.json ✓"
+# GCS の models.json にキーが含まれていないこと
+gcloud storage cat "gs://${BUCKET}/data/models.json" | python -m json.tool | grep -i "sk-" || echo "no key ✓"
 gcloud logging read "resource.type=cloud_run_job AND textPayload:sk-" --limit=5 --project "$PROJECT_ID"
-# CORS が効いていること
-curl -s -D - -o /dev/null -H "Origin: https://${PROJECT_ID}.web.app" \
-  "${SITE_URL}/data/models.json" | grep -i "access-control-allow-origin"
+# CORS が効いていること（Firebase JS から GCS data/feeds を fetch するため）
+curl -s -D - -o /dev/null -H "Origin: ${SITE_URL}" \
+  "https://storage.googleapis.com/${BUCKET}/data/models.json" | grep -i "access-control-allow-origin"
+# Firebase Hosting にサイトが配信されていること
+curl -s "${SITE_URL}/" | grep "<title>"
 ```
-
-## 8. 旧 Firebase（全載せ）構成からの移行メモ
-
-以前は `index.html`+`feeds`+`models.json` をすべて Firebase Hosting にデプロイしていた。方式A では:
-
-1. data/feeds は公開GCSバケットへ（本手順 3.2 / run_job.sh が担当）。
-2. 画面のフロントJS は `DATA_ORIGIN`（GCS絶対URL）から data/feeds を fetch（CORS）。
-3. Firebase Hosting は画面のみをデプロイ（`deploy_site.sh`）。
-4. ジョブの `FIREBASE_PROJECT` 環境変数は不要（削除）。
 
 ## 9. CI 自動デプロイ（main マージで自動・GitHub Actions + WIF）
 
-`main` にマージ（push）されると `.github/workflows/deploy.yml` が走り、変更箇所に応じて自動デプロイする。
+`main` にマージ（push）されると `.github/workflows/deploy.yml` が走り、**Cloud Run Job** のイメージを再ビルド・更新する。
 
-- `docs/**` / `firebase.json` / `.firebaserc` の変更 → **Firebase Hosting**（画面）をデプロイ
-- `scripts/**` / `Dockerfile` / `requirements*.txt` / `docs/**` の変更 → **Cloud Run Job** のイメージを再ビルドしてジョブを更新
+- `scripts/**` / `Dockerfile` / `requirements*.txt` / `templates/**` / `assets/**` / `docs/**` の変更 → **Cloud Run Job** のイメージを再ビルドしてジョブを更新
+
+> Firebase Hosting へのデプロイは Cloud Run Job（`firebase_hosting_deploy.py`）が日次で行うため、
+> GitHub Actions から Firebase へのデプロイは不要。テンプレート/デザイン変更は次回日次実行（最大24時間後）に反映される。
 
 認証は **Workload Identity Federation（鍵レス）**。SA の JSON キーは保存しない。以下は初回のみの準備。
 
