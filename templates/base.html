@@ -6,7 +6,7 @@
   <title>{% block title %}{{ site_name }}{% endblock %}</title>
   <meta name="description" content="{% block description %}{{ site_tagline }}{% endblock %}">
   <link rel="stylesheet" href="{{ asset('css/styles.css') }}">
-  <link rel="alternate" type="application/rss+xml" title="{{ site_name }} - All" href="{{ site_url }}/feeds/all.xml">
+  <link rel="alternate" type="application/rss+xml" title="{{ site_name }} - All" href="{{ feeds_base_url }}/feeds/all.xml">
   {% block head_extra %}{% endblock %}
 </head>
 <body>
@@ -22,7 +22,7 @@
       <nav class="site-nav" aria-label="主要リンク">
         <a href="{{ page_url('index.html') }}">ニュース</a>
         <a href="{{ page_url('subscribe.html') }}">RSS購読</a>
-        <a class="site-nav__rss" href="{{ site_url }}/feeds/all.xml" title="RSS: All">RSS</a>
+        <a class="site-nav__rss" href="{{ feeds_base_url }}/feeds/all.xml" title="RSS: All">RSS</a>
       </nav>
     </div>
   </header>
@@ -36,7 +36,7 @@
       <p class="site-footer__links">
         <a href="{{ page_url('index.html') }}">ニュース</a>
         <a href="{{ page_url('subscribe.html') }}">RSS購読 / Teams連携</a>
-        <a href="{{ site_url }}/feeds/all.xml">RSSフィード</a>
+        <a href="{{ feeds_base_url }}/feeds/all.xml">RSSフィード</a>
       </p>
       <p class="site-footer__note">{{ site_name }} — AIニュースを自動収集・要約して配信しています。</p>
       <p class="site-footer__note">当サイトには広告・アフィリエイトリンクが含まれます。</p>

@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 SITE_URL = os.environ.get(
     "SITE_URL", "https://storage.googleapis.com/your-bucket"
 ).rstrip("/")
+# フィードファイルの配信元URL（GCS）。SITE_URL（Firebase）とは別に保持する。
+FEEDS_BASE_URL = os.environ.get("FEEDS_BASE_URL", SITE_URL).rstrip("/")
 SITE_NAME = os.environ.get("SITE_NAME", "AI News Watch")
 SITE_TAGLINE = os.environ.get("SITE_TAGLINE", "AIニュースを自動収集・要約してお届け")
 
@@ -79,6 +81,7 @@ def _build_env() -> Environment:
     env.globals["site_name"] = SITE_NAME
     env.globals["site_tagline"] = SITE_TAGLINE
     env.globals["site_url"] = SITE_URL
+    env.globals["feeds_base_url"] = FEEDS_BASE_URL
     return env
 
 
