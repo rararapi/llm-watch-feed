@@ -1,9 +1,9 @@
-“””Generate the static site (index + per-article OGP pages + subscribe) from models.json.
+"""Generate the static site (index + per-article OGP pages + subscribe) from models.json.
 
 トップ/購読ページに加え、SNS共有用の「OGPを焼き込んだ個別記事ページ」を事前生成する。
 出力は PAGES_DIR 以下で、firebase_hosting_deploy.py が Firebase Hosting へ日次デプロイする。
 公開URL は SITE_URL（https://ai-watch-feed.web.app）基準。
-“””
+"""
 
 import hashlib
 import json
