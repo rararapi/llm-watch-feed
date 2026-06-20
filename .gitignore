@@ -10,3 +10,14 @@ public/
 .firebase/
 
 .claude/settings.local.json
+
+# X 投稿用セッションファイル（認証情報のため除外）
+x-post/playwright_session.json
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
