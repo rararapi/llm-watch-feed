@@ -1,0 +1,60 @@
+name: Mobile app CI
+
+# モバイルアプリ(app/)専用のCI。パスフィルタで app/** の変更時のみ実行し、
+# 既存 deploy.yml（サイト/Cloud Run Job のデプロイ）とは独立して動く。
+# 型チェックまでを常時実行。EAS Build/Update は EXPO_TOKEN シークレットがある場合のみ。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/app.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - '.github/workflows/app.yml'
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      # shared/meta.json はバックエンド生成物（gitignore）。CIでは生成しないため
+      # コミット済みの src/generated/meta.json をそのまま使う（best-effort で上書き）。
+      - run: npm run sync-meta || true
+      - run: npm run typecheck
+
+  # 配布ビルド。EXPO_TOKEN（Expoアカウントのアクセストークン）が設定されている場合のみ実行。
+  eas-build:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - name: Skip if no EXPO_TOKEN
+        if: ${{ env.EXPO_TOKEN == '' }}
+        run: echo "EXPO_TOKEN 未設定のため EAS ビルドをスキップします" && exit 0
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      - name: EAS build (internal)
+        if: ${{ env.EXPO_TOKEN != '' }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas-cli@latest build --platform all --profile preview --non-interactive --no-wait
