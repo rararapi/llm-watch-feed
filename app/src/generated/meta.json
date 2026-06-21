@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "site_url": "http://localhost:8000",
+  "site_name": "AI News Watch",
+  "data_url": "http://localhost:8000/data/models.json",
+  "placeholder": {
+    "formula": "hue = int(md5(source).hexdigest()[:6], 16) % 360",
+    "saturation": 55,
+    "lightness": 30
+  },
+  "sources": [
+    {
+      "name": "OpenAI",
+      "hue": 217
+    }
+  ],
+  "importance": {
+    "A": {
+      "label": "重要度A",
+      "description": "モデル選定・API利用・コスト・性能・PoC優先度に直接影響する重要なアップデート"
+    },
+    "B": {
+      "label": "B",
+      "description": "今すぐ対応不要だが、ウォッチまたは今後のPoC候補として有用な情報"
+    },
+    "C": {
+      "label": "C",
+      "description": "関連はあるが低優先度（通常フィードには含めない）"
+    }
+  },
+  "model_types": {
+    "Frontier": "GPT/Claude/Geminiなどの主要フロンティアモデル",
+    "Reasoning": "推論能力・長考性能を主な売りにするモデル",
+    "Coding": "コード生成・SWE-bench等を主な売りにするモデル",
+    "Multimodal": "画像・音声・動画・画面理解を扱うモデル",
+    "Open": "オープンウェイト・OSS・公開モデル",
+    "Small": "小型・オンデバイス・低コストモデル",
+    "Embedding": "埋め込み・検索・RAG用モデル",
+    "Audio": "音声認識・音声生成・会話モデル",
+    "Video": "動画生成・動画理解モデル",
+    "Other": "上記に分類しづらいモデル"
+  }
+}
