@@ -72,6 +72,9 @@ scripts/generate_pages.py
   - テンプレートは templates/、サイト静的物は assets/site/。OGP/canonical/内部リンクは SITE_URL 基準の絶対URL
   - 表示対象は重要度A/B。1記事の描画失敗で全体が落ちない（try/except）
   - 一覧の絞り込み（重要度/ソース/キーワード）はサーバ生成カードを vanilla JS で表示切替
+  - 併せて表示定数を `shared/meta.json`（SHARED_META_PATH）へ出力する。ソース色相(hue)・
+    重要度ラベル・モデル種別ラベルの単一情報源で、Web(SSG)とモバイルアプリ(app/)が参照する。
+    既存サイト生成物には非干渉（純粋な追加出力・失敗してもサイト生成は完走）。生成物のため gitignore
 
 scripts/gcs_sync.py / scripts/run_job.sh / scripts/deploy_site.sh
   - run_job.sh が Cloud Run Job のエントリポイント（ニュース更新ジョブ）
@@ -249,6 +252,8 @@ GCP へのデプロイ・自動実行の手順は `DEPLOY.md` を参照。
 - `SITE_NAME` / `SITE_TAGLINE` — サイトのブランド表記（generate_pages.py。既定 `AI News Watch` / タグライン）
 - `MODELS_JSON_PATH` / `FEEDS_DIR` / `PAGES_DIR` — 入出力先（既定 `docs/data/models.json` / `docs/feeds/` /
   `docs`。ジョブでは `public/` 配下。PAGES_DIR はサイト生成先＝バケット直下のミラー）
+- `SHARED_META_PATH` — 表示定数の共有メタ出力先（既定 `shared/meta.json`）。Web/モバイルアプリ共通の
+  ソース色・ラベル定義。generate_pages.py が出力（生成物・gitignore）
 - `GCS_BUCKET` — 公開配信／状態バケット名（`scripts/gcs_sync.py` 用、クラウド実行時）
 - `GCS_OBJECT` — 状態＝配信データのキー（既定 `data/models.json`）
 - `SITE_DIR` — `gcs_sync.py publish-site`（GCS配信する場合の予備手段）が読むディレクトリ（既定 `docs`）。通常の画面デプロイは Firebase（`deploy_site.sh`）

@@ -14,6 +14,17 @@ docs/articles/
 docs/assets/
 docs/data/
 docs/feeds/
+# generate_pages.py が生成する共有メタ（表示定数。Web/アプリが参照する単一情報源）。
+# 生成物のためコミットしない（正本は generate_pages.py の定数＋データ由来のソース一覧）
+shared/meta.json
+
+# Expo モバイルアプリ（app/）の依存・ビルド成果物
+app/node_modules/
+app/.expo/
+app/dist/
+app/ios/
+app/android/
+
 # firebase-tools が生成するローカルキャッシュ
 .firebase/
 
