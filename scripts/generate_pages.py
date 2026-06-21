@@ -49,6 +49,31 @@ ASSETS_DIR = Path(os.environ.get("ASSETS_DIR", "assets/site"))
 STATIC_PAGES_DIR = Path(os.environ.get("STATIC_PAGES_DIR", "docs"))
 STATIC_PAGE_FILES = ["power-automate.html"]
 
+# Web(SSG)とモバイルアプリが同じ表示定数を参照するための共有メタ出力先。
+# サイト生成物(PAGES_DIR)とは別のリポ内パスに置く（公開バケットへは載せない）。
+SHARED_META_PATH = Path(os.environ.get("SHARED_META_PATH", "shared/meta.json"))
+
+# 重要度ラベル/説明（AGENTS.md のテーブルが単一情報源。UIの絞り込み表示にも使う）
+IMPORTANCE_META = {
+    "A": {"label": "重要度A", "description": "モデル選定・API利用・コスト・性能・PoC優先度に直接影響する重要なアップデート"},
+    "B": {"label": "B", "description": "今すぐ対応不要だが、ウォッチまたは今後のPoC候補として有用な情報"},
+    "C": {"label": "C", "description": "関連はあるが低優先度（通常フィードには含めない）"},
+}
+
+# モデル種別ラベル（AGENTS.md のテーブルが単一情報源）
+MODEL_TYPE_META = {
+    "Frontier": "GPT/Claude/Geminiなどの主要フロンティアモデル",
+    "Reasoning": "推論能力・長考性能を主な売りにするモデル",
+    "Coding": "コード生成・SWE-bench等を主な売りにするモデル",
+    "Multimodal": "画像・音声・動画・画面理解を扱うモデル",
+    "Open": "オープンウェイト・OSS・公開モデル",
+    "Small": "小型・オンデバイス・低コストモデル",
+    "Embedding": "埋め込み・検索・RAG用モデル",
+    "Audio": "音声認識・音声生成・会話モデル",
+    "Video": "動画生成・動画理解モデル",
+    "Other": "上記に分類しづらいモデル",
+}
+
 # content のある言語だけ出力する。collect.py が en を出すようになったら "en" を足す
 LANGUAGES = ["ja"]
 
@@ -83,6 +108,12 @@ def _build_env() -> Environment:
     env.globals["site_url"] = SITE_URL
     env.globals["feeds_base_url"] = FEEDS_BASE_URL
     return env
+
+
+def _source_hue(source: str) -> int:
+    """ソース名から決定的にプレースホルダ色相(0-359)を導く。
+    Web(macros.html の --ph-hue / styles.css)とアプリで同じ色を出すための単一ロジック。"""
+    return int(hashlib.md5(source.encode("utf-8")).hexdigest()[:6], 16) % 360
 
 
 def _parse_dt(iso_str: str):
@@ -133,7 +164,7 @@ def prepare(a: dict, now: datetime) -> dict:
     a["_hero"] = a.get("image_generated_url") or a["image_url"] or None
     a["_og_image"] = a["image_url"] or f"{SITE_URL}/assets/img/og-default.png"
     source = a.get("source") or a.get("provider") or "AI"
-    a["_hue"] = int(hashlib.md5(source.encode("utf-8")).hexdigest()[:6], 16) % 360
+    a["_hue"] = _source_hue(source)
     return a
 
 
@@ -210,6 +241,38 @@ def copy_assets() -> None:
     logger.info(f"Copied assets {ASSETS_DIR} -> {PAGES_DIR / 'assets'}")
 
 
+def render_meta(articles: list[dict]) -> None:
+    """表示定数(ソース色/重要度/モデル種別)を shared/meta.json に出力。
+    モバイルアプリとWebが同じ定義を参照するための単一情報源。既存サイト生成物には
+    一切干渉せず、失敗してもサイト生成を落とさない（純粋な追加出力）。
+    機密は含めない（公開前提の表示定数のみ）。"""
+    try:
+        sources = sorted({a.get("source") for a in articles if a.get("source")})
+        meta = {
+            "schema_version": 1,
+            "site_url": SITE_URL,
+            "site_name": SITE_NAME,
+            # アプリが記事データを取得する公開URL（= 配信されている models.json）
+            "data_url": f"{SITE_URL}/data/models.json",
+            # プレースホルダ色: HSL の color-1/color-2 を hue から導く（Webの styles.css と同等）
+            "placeholder": {
+                "formula": "hue = int(md5(source).hexdigest()[:6], 16) % 360",
+                "saturation": 55,
+                "lightness": 30,
+            },
+            "sources": [{"name": s, "hue": _source_hue(s)} for s in sources],
+            "importance": IMPORTANCE_META,
+            "model_types": MODEL_TYPE_META,
+        }
+        SHARED_META_PATH.parent.mkdir(parents=True, exist_ok=True)
+        SHARED_META_PATH.write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        logger.info(f"Wrote shared meta -> {SHARED_META_PATH} ({len(sources)} sources)")
+    except Exception as e:  # 既存サイト生成を巻き込まない
+        logger.warning(f"Failed to write shared meta {SHARED_META_PATH}: {e}")
+
+
 def copy_static_pages() -> None:
     for name in STATIC_PAGE_FILES:
         src = STATIC_PAGES_DIR / name
@@ -245,6 +308,7 @@ def main() -> None:
 
     copy_assets()
     copy_static_pages()
+    render_meta(visible)
     render_index(env, visible)
     render_subscribe(env)
 
