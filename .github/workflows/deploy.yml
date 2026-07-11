@@ -1,14 +1,7 @@
 name: Deploy on merge to main
 
-# main へのマージ（= push）で Cloud Run Job のイメージを自動再ビルド・更新する。
-#
-# Firebase Hosting へのデプロイは Cloud Run Job（run_job.sh）が日次で行うため、
-# ここでは扱わない。テンプレート/デザイン変更は次回日次実行（最大24時間後）に反映される。
-#
-# 認証は Workload Identity Federation（鍵レス）。事前準備は DEPLOY.md「CI 自動デプロイ」を参照。
-# 必要な GitHub Secrets:
-#   GCP_WIF_PROVIDER  例: projects/123456789/locations/global/workloadIdentityPools/github/providers/github
-#   GCP_DEPLOY_SA     例: gha-deployer@ai-watch-feed.iam.gserviceaccount.com
+# On pushes to main, rebuild the Cloud Run Job image and run the job.
+# The job generates pages and deploys them to Firebase Hosting.
 
 on:
   push:
@@ -16,7 +9,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write   # WIF でトークンを取得するために必須
+  id-token: write
 
 env:
   PROJECT_ID: ai-watch-feed
@@ -38,12 +31,13 @@ jobs:
             job:
               - 'scripts/**'
               - 'Dockerfile'
-              - '.dockerignore'    # ビルドコンテキストに影響するため再ビルド対象
-              - '.gcloudignore'    # gcloud builds submit のアップロード対象を決める
+              - '.dockerignore'
+              - '.gcloudignore'
+              - '.github/workflows/deploy.yml'
               - 'requirements*.txt'
-              - 'templates/**'     # generate_pages.py のテンプレ（イメージに COPY）
-              - 'assets/**'        # サイト静的物（イメージに COPY）
-              - 'docs/**'          # docs/ はイメージにも COPY されるためジョブも再ビルド対象
+              - 'templates/**'
+              - 'assets/**'
+              - 'docs/**'
 
   deploy-job:
     needs: changes
@@ -63,7 +57,7 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Build & push image, then update Cloud Run Job
+      - name: Build image, update Cloud Run Job, and run deployment
         run: |
           IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/collector:${GITHUB_SHA}"
           gcloud builds submit --tag "$IMAGE" --project "$PROJECT_ID"
