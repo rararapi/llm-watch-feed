@@ -76,7 +76,6 @@ llm-watch-feed/
 
 ### Phase 3 — リリースと運用
 - App Store / Play 提出。EAS UpdateでOTA。クラッシュ計測。
-- 注意: `templates/partials/_affiliate.html` のアフィリエイトがある場合、ストア審査ポリシー（特にApple）への適合確認が必要。
 
 ## 4. Webへの影響
 

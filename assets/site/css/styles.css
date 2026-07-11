@@ -325,22 +325,6 @@ a:hover { text-decoration: underline; }
   background: #f9fafb; color: var(--ink-soft);
 }
 
-/* ---------- Affiliate ---------- */
-/* 上部に置く「PR枠」。広告と分かる体裁にしつつ、本文を圧迫しないよう控えめにまとめる */
-.affiliate {
-  margin: 16px 0 22px;
-  padding: 12px 14px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-.affiliate__notice {
-  display: block; margin: 0 0 10px;
-  font-size: 11px; color: var(--ink-mute); letter-spacing: .02em;
-}
-.affiliate__grid { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
-.affiliate__grid img[width="300"] { display: block; max-width: 100%; height: auto; border-radius: 8px; }
-
 /* ---------- States ---------- */
 .empty-state {
   padding: 28px 20px; text-align: center; color: var(--ink-mute);

@@ -8,8 +8,6 @@
 {% block content %}
 <nav class="breadcrumb"><a href="{{ page_url('index.html') }}">← ニュース一覧へ</a></nav>
 
-{% include "partials/_affiliate.html" %}
-
 <article class="article imp-accent-{{ a.importance or 'C' }}">
   <div class="article__hero">{{ m.thumb(a, a._hero) }}</div>
   <header class="article__header">
