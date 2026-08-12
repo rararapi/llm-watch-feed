@@ -22,7 +22,7 @@
 #   FIREBASE_SITE_ID  Firebase Hosting サイト ID（既定: ai-watch-feed）
 # 任意:
 #   VERTEX_LOCATION   Vertex AI リージョン（既定 us-central1）
-#   VERTEX_MODEL      Gemini モデル名（既定 gemini-2.5-flash）
+#   VERTEX_MODEL      Gemini モデル名（既定 gemini-3.1-flash-lite）
 #   GCS_OBJECT        状態=配信データのキー（既定 data/models.json）
 #   PUBLIC_DIR        既定 public
 #

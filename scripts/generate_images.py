@@ -88,7 +88,7 @@ IMAGE_BASE_URL = os.environ.get(
     f"https://storage.googleapis.com/{GCS_BUCKET}" if GCS_BUCKET else "",
 )
 
-TEXT_MODEL = os.environ.get("VERTEX_MODEL", "gemini-2.5-flash")
+TEXT_MODEL = os.environ.get("VERTEX_MODEL", "gemini-3.1-flash-lite")
 IMAGE_MODEL = os.environ.get("VERTEX_IMAGE_MODEL", "gemini-2.5-flash-image")
 
 # 不変な配信物として長期キャッシュさせる（記事ごとに画像は変わらない）。

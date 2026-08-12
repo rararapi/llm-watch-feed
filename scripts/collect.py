@@ -465,7 +465,7 @@ def build_model(system_prompt: str = SYSTEM_PROMPT) -> Optional[GenerativeModel]
     """
     project = os.environ.get("GCP_PROJECT")
     location = os.environ.get("VERTEX_LOCATION", "us-central1")
-    model_name = os.environ.get("VERTEX_MODEL", "gemini-2.5-flash")
+    model_name = os.environ.get("VERTEX_MODEL", "gemini-3.1-flash-lite")
 
     if not project:
         logger.warning(

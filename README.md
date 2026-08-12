@@ -108,7 +108,7 @@ MODELS_JSON_PATH=/tmp/out/models.json FEEDS_DIR=/tmp/out/feeds \
 | `SITE_URL` | フィードの自己リンク用。フィードはGCSにあるためバケットURLを指定 |
 | `GCP_PROJECT` | Vertex AI のプロジェクト ID（ADC 認証。未設定ならダミーモード） |
 | `VERTEX_LOCATION` | Vertex AI のリージョン（既定 `us-central1`） |
-| `VERTEX_MODEL` | Gemini モデル名（既定 `gemini-2.5-flash`） |
+| `VERTEX_MODEL` | Gemini モデル名（既定 `gemini-3.1-flash-lite`） |
 | `GCS_OBJECT` | 状態＝配信データのキー（既定 `data/models.json`） |
 | `MODELS_JSON_PATH` / `FEEDS_DIR` | 入出力先（ジョブ内で `public/` 配下に設定） |
 

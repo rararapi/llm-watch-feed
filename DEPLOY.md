@@ -120,7 +120,7 @@ gcloud builds submit --tag "$IMAGE"
 gcloud run jobs create "$JOB" \
   --image="$IMAGE" --region="$REGION" \
   --service-account="$SA_EMAIL" \
-  --set-env-vars="GCS_BUCKET=${BUCKET},SITE_URL=${SITE_URL},FEEDS_BASE_URL=https://storage.googleapis.com/${BUCKET},FIREBASE_SITE_ID=${FIREBASE_SITE_ID},GCP_PROJECT=${PROJECT_ID},VERTEX_LOCATION=us-central1,VERTEX_MODEL=gemini-2.5-flash,VERTEX_IMAGE_MODEL=gemini-2.5-flash-image,IMAGE_MIN_IMPORTANCE=A,IMAGE_MAX_PER_RUN=5" \
+  --set-env-vars="GCS_BUCKET=${BUCKET},SITE_URL=${SITE_URL},FEEDS_BASE_URL=https://storage.googleapis.com/${BUCKET},FIREBASE_SITE_ID=${FIREBASE_SITE_ID},GCP_PROJECT=${PROJECT_ID},VERTEX_LOCATION=us-central1,VERTEX_MODEL=gemini-3.1-flash-lite,VERTEX_IMAGE_MODEL=gemini-2.5-flash-image,IMAGE_MIN_IMPORTANCE=A,IMAGE_MAX_PER_RUN=5" \
   --max-retries=1 --task-timeout=1800
 # 既存更新時は `gcloud run jobs update "$JOB" ...`（FIREBASE_PROJECT は使わない）
 # AI画像生成は GCS_BUCKET（公開バケット）と roles/aiplatform.user で動作。images/<id>.webp に

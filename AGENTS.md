@@ -243,7 +243,7 @@ GCP へのデプロイ・自動実行の手順は `DEPLOY.md` を参照。
 環境変数:
 - `GCP_PROJECT` — Vertex AI のプロジェクトID（未設定ならダミー要約で動作）。認証はADCで行いAPIキーは不要
 - `VERTEX_LOCATION` — Vertex AI のリージョン（デフォルト: `us-central1`）
-- `VERTEX_MODEL` — Gemini モデル名（デフォルト: `gemini-2.5-flash`。視覚プロンプト生成にも利用）
+- `VERTEX_MODEL` — Gemini モデル名（デフォルト: `gemini-3.1-flash-lite`。視覚プロンプト生成にも利用）
 - `VERTEX_IMAGE_MODEL` — AI画像生成モデル名（デフォルト: `gemini-2.5-flash-image`）
 - `IMAGE_MIN_IMPORTANCE` — AI画像生成の対象重要度（デフォルト: `A`）
 - `IMAGE_MAX_PER_RUN` — 1回の実行で生成する最大枚数（デフォルト: `5`）
