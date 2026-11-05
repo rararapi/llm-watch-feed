@@ -6,6 +6,7 @@
 
 状態 models.json の正本は `gs://<bucket>/<GCS_OBJECT>`（既定 data/models.json）であり、
 これがそのまま公開配信される（中身に機密は無い）。publish-pages は手動バックアップ用に残す。
+保持上限で配信対象から外れた記事のハッシュは、同じキーに .archive.json を付けて保存する。
 
 環境変数:
 - GCS_BUCKET       配信／状態バケット名（必須）
@@ -16,10 +17,13 @@
 - SITE_DIR         サイト静的ファイルのローカルディレクトリ（publish-site 用、既定: docs）
 """
 
+import hashlib
+import json
 import logging
 import mimetypes
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from google.cloud import storage
@@ -74,11 +78,14 @@ def _content_type(path: Path) -> str:
     )
 
 
-def _upload_file(local: Path, object_key: str) -> None:
+def _upload_file(local: Path, object_key: str, generation: int | None = None) -> int:
     blob = _bucket().blob(object_key)
     blob.cache_control = _CACHE_CONTROL
-    blob.upload_from_filename(str(local), content_type=_content_type(local))
+    blob.upload_from_filename(
+        str(local), content_type=_content_type(local), if_generation_match=generation
+    )
     logger.info(f"Uploaded {local} -> gs://{BUCKET}/{object_key}")
+    return blob.generation
 
 
 def _upload_dir(local_root: Path, key_prefix: str) -> int:
@@ -93,27 +100,64 @@ def _upload_dir(local_root: Path, key_prefix: str) -> int:
     return count
 
 
-def download() -> None:
-    """状態(models.json)をローカルへ取得する。
+def _generation_path() -> Path:
+    # download と upload は別プロセス。Firebase に配信されない一時領域で世代を引き継ぐ。
+    target = json.dumps([BUCKET, OBJECT, str(LOCAL_PATH.resolve())]).encode()
+    name = "llm-watch-generations-" + hashlib.sha256(target).hexdigest()
+    return Path(tempfile.gettempdir()) / name
 
-    オブジェクトが存在しない場合のみ「初回実行＝空から開始」を許容する。
-    存在するのに取得に失敗した場合は例外を送出し、状態の取り違え（全件消失）を防ぐ。
-    """
-    blob = _bucket().blob(OBJECT)
-    if not blob.exists():
-        logger.warning(f"gs://{BUCKET}/{OBJECT} not found — first run, starting empty")
-        return
+
+def _archive_path() -> Path:
+    return LOCAL_PATH.with_name(LOCAL_PATH.name + ".archive.json")
+
+
+def download() -> None:
+    """公開記事と保持上限を超えた記事の履歴を取得する。"""
+    receipt = _generation_path()
+    receipt.unlink(missing_ok=True)
+    bucket = _bucket()
+    generations = {}
     LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    blob.download_to_filename(str(LOCAL_PATH))
-    logger.info(f"Downloaded gs://{BUCKET}/{OBJECT} -> {LOCAL_PATH}")
+    with tempfile.TemporaryDirectory(dir=LOCAL_PATH.parent) as staging:
+        for key, local in ((OBJECT, LOCAL_PATH), (OBJECT + ".archive.json", _archive_path())):
+            staged = Path(staging, local.name)
+            blob = bucket.get_blob(key)
+            if blob is None:
+                generations[key] = 0
+                # 初回は既存のローカルデータからの初期化も許容する。
+                # 既存バケットに履歴だけ無い移行時は空の履歴から開始する。
+                if generations[OBJECT] or not local.exists():
+                    staged.write_text("[]", encoding="utf-8")
+            else:
+                generations[key] = blob.generation
+                blob.download_to_filename(str(staged), if_generation_match=blob.generation)
+                logger.info(f"Downloaded gs://{BUCKET}/{key}")
+        for staged in Path(staging).iterdir():
+            staged.replace(LOCAL_PATH.parent / staged.name)
+    receipt.write_text(json.dumps(generations), encoding="utf-8")
 
 
 def upload() -> None:
-    """更新後の状態(models.json)を GCS へ書き戻す。これがそのまま公開配信される。"""
+    """再掲載を防ぐ履歴を先に確定してから、公開記事を書き戻す。"""
     if not LOCAL_PATH.exists():
         logger.error(f"{LOCAL_PATH} does not exist — nothing to upload")
         sys.exit(1)
-    _upload_file(LOCAL_PATH, OBJECT)
+    receipt = _generation_path()
+    archive_key = OBJECT + ".archive.json"
+    archive_path = _archive_path()
+    # ダウンロードしていないローカルデータは、新規バケットの初期化に限り許容する。
+    generations = {OBJECT: 0, archive_key: 0}
+    if receipt.exists():
+        generations = json.loads(receipt.read_text(encoding="utf-8"))
+    elif _bucket().get_blob(OBJECT) is not None:
+        raise RuntimeError("Download the current GCS state before uploading changes")
+    if archive_path.exists():
+        generations[archive_key] = _upload_file(archive_path, archive_key, generations[archive_key])
+        receipt.write_text(json.dumps(generations), encoding="utf-8")
+    elif generations[archive_key]:
+        raise FileNotFoundError(archive_path)
+    generations[OBJECT] = _upload_file(LOCAL_PATH, OBJECT, generations[OBJECT])
+    receipt.write_text(json.dumps(generations), encoding="utf-8")
 
 
 def publish_feeds() -> None:

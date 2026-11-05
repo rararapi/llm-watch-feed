@@ -11,7 +11,6 @@ Vertex AI で要約・分析し、利用できなければダミー文章を埋�
 """
 
 import calendar
-import hashlib
 import html
 import json
 import logging
@@ -27,6 +26,9 @@ import requests
 import vertexai
 from dotenv import load_dotenv
 from vertexai.generative_models import GenerationConfig, GenerativeModel
+
+from article_identity import article_key, new_candidates, unique_articles, url_to_id
+from story_dedup import STORY_PROMPT, group_stories
 
 load_dotenv()
 
@@ -308,10 +310,6 @@ tags は内容に応じて自由に付与（例: Funding, Regulation, Agent, RAG
 is_model_related が false の場合、他フィールドは空文字列と空配列でよい。"""
 
 
-def url_to_id(url: str) -> str:
-    return hashlib.sha256(url.encode()).hexdigest()
-
-
 def load_existing() -> list[dict]:
     if MODELS_JSON_PATH.exists():
         with open(MODELS_JSON_PATH, encoding="utf-8") as f:
@@ -321,9 +319,19 @@ def load_existing() -> list[dict]:
 
 def save_articles(articles: list[dict]) -> None:
     MODELS_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(MODELS_JSON_PATH, "w", encoding="utf-8") as f:
+    temporary = MODELS_JSON_PATH.with_suffix(".json.tmp")
+    with temporary.open("w", encoding="utf-8") as f:
         json.dump(articles, f, ensure_ascii=False, indent=2)
+    temporary.replace(MODELS_JSON_PATH)
     logger.info(f"Saved {len(articles)} articles to {MODELS_JSON_PATH}")
+
+
+def report_keys(articles: list[dict]) -> set[str]:
+    return {
+        article_key(report["url"])
+        for article in articles
+        for report in [article, *article.get("other_reports", [])]
+    }
 
 
 def get_published_at(entry) -> str:
@@ -493,30 +501,22 @@ def main() -> None:
     model = build_model()
     use_llm = model is not None
 
-    existing = load_existing()
-    seen_urls = {a["url"] for a in existing}
+    existing = unique_articles(load_existing())
+    existing_ids = {a["id"] for a in existing}
+    archive_path = Path(str(MODELS_JSON_PATH) + ".archive.json")
+    archived = set(json.loads(archive_path.read_text(encoding="utf-8"))) if archive_path.exists() else set()
     logger.info(f"Existing articles: {len(existing)}")
 
     # ソースごとに新着を集め、ラウンドロビンで均等に取り込む。
     # 単純連結だと先頭ソースだけで MAX_NEW_ARTICLES に達し、後段ソースが
     # 取り込まれにくくなるため（ソース数が多いほど顕著）。
-    per_source_new: list[list[dict]] = []
-    for source in RSS_SOURCES:
-        fetched = fetch_source(source)
-        per_source_new.append([a for a in fetched if a["url"] not in seen_urls])
-
-    new_articles: list[dict] = []
-    for i in range(max((len(s) for s in per_source_new), default=0)):
-        for src_articles in per_source_new:
-            if i < len(src_articles):
-                new_articles.append(src_articles[i])
-
-    logger.info(
-        f"New articles: {len(new_articles)} (processing up to {MAX_NEW_ARTICLES})"
+    new_articles = new_candidates(
+        [fetch_source(source) for source in RSS_SOURCES],
+        archived | report_keys(existing),
+        MAX_NEW_ARTICLES,
     )
-    new_articles = new_articles[:MAX_NEW_ARTICLES]
+    logger.info(f"New articles to analyze: {len(new_articles)}")
 
-    added = 0
     for article in new_articles:
         logger.info(f"Analyzing: {article['title'][:70]}")
         result = analyze(model, article) if use_llm else dummy_analysis(article)
@@ -534,7 +534,7 @@ def main() -> None:
             "source": article["source"],
             "published_at": article["published_at"],
             "collected_at": datetime.now(timezone.utc).isoformat(),
-            "image_url": fetch_og_image(article["url"]),
+            "image_url": None,
             "is_model_related": True,
             "model_relevance_reason": result.get("model_relevance_reason", ""),
             "model_name": result.get("model_name") or "Unknown",
@@ -548,15 +548,36 @@ def main() -> None:
             "language": "ja",
         }
         existing.append(record)
-        added += 1
-        logger.info(
-            f"  -> Added [{record['importance']}][{record['model_type']}] {record['model_name']}"
-        )
+
+    matcher = None
+    if use_llm and any(not a.get("story_checked") for a in existing):
+        matcher = build_model(STORY_PROMPT)
+    existing = group_stories(existing, matcher, existing_ids)
+    if use_llm:
+        # A failed comparison is retried from RSS just like a failed analysis.
+        # Never retract already published items because the matcher was unavailable.
+        before = len(existing)
+        existing = [a for a in existing if a["id"] in existing_ids or a.get("story_checked")]
+        if len(existing) < before:
+            logger.warning("Deferred %d new article(s) pending story comparison", before - len(existing))
 
     if len(existing) > MAX_TOTAL_ARTICLES:
+        archived.update(report_keys(existing[:-MAX_TOTAL_ARTICLES]))
         existing = existing[-MAX_TOTAL_ARTICLES:]
         logger.info(f"Trimmed to latest {MAX_TOTAL_ARTICLES} articles")
 
+    # Persist evicted keys before replacing the public list. A retry after a
+    # partial write still recognizes all URLs from the previous publication.
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = archive_path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(sorted(archived)), encoding="utf-8")
+    temporary.replace(archive_path)
+
+    added = 0
+    for record in existing:
+        if record["id"] not in existing_ids:
+            record["image_url"] = fetch_og_image(record["url"])
+            added += 1
     save_articles(existing)
     mode = "LLM" if use_llm else "DUMMY"
     logger.info(f"Done ({mode} mode). Added: {added}, Total: {len(existing)}")

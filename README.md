@@ -38,6 +38,9 @@ flowchart LR
 ```
 
 - 状態 `data/models.json` の正本は **公開GCSバケット**（DB は使いません）。実行ごとに「取得 → 更新 → 保存」し、それがそのまま配信されます。
+- 同じニュースを複数の媒体が報じたときは、最初に掲載した記事にまとめます。記事ページから他媒体の報道も読めます。既存記事も収集時に照合し、代表記事のURLとRSSのGUIDを引き継ぎます。
+- Vertex AI が見出し・要約・公開日を比較し、別言語の報道も照合します。新事実がある続報は別記事です。Vertex未設定時は、元記事URLや、掲載日の近い転載で確認できる一致を使います。
+- 保持上限の500件から外れる際は、各媒体のURLのハッシュを `data/models.json.archive.json` に保存します。これにより過去のRSS記事が再取得されても、そのURLを再掲載しません。導入前に保持上限から外れた記事の履歴は、次に取得した時点から蓄積します。
 - データ／RSSフィード配信は **公開GCSバケット**（HTTPS・CORS設定済み）。ニュース更新はGCS書き込みのみで **デプロイ不要**。
 - 画面（`index.html` 等）は **Firebase Hosting**（無料HTTPS、`*.web.app`、独自ドメイン無料接続可）。`scripts/deploy_site.sh`（= `firebase deploy`）で **画面変更時のみ** デプロイ。
 - フロントJS は data/feeds を GCS の絶対URL（`DATA_ORIGIN`）から fetch します。フィードURLはGCSのまま（綺麗にするには有料の方式B=LB/CDN or rewrite が必要）。

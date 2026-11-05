@@ -59,6 +59,17 @@
     <a class="btn" href="{{ a.url }}" target="_blank" rel="noopener">元記事を読む ↗</a>
   </div>
 
+  {% if a._other_reports %}
+  <section class="block">
+    <h2 class="block__label">同じニュースを報じた記事</h2>
+    <ul>
+      {% for report in a._other_reports %}
+      <li><a href="{{ report.url }}" target="_blank" rel="noopener">{{ report.title or report.source or report.url }}</a>{% if report.source and report.title %}（{{ report.source }}）{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   <div class="share" aria-label="共有">
     <span class="share__label">共有:</span>
     <a class="share__btn" target="_blank" rel="noopener nofollow"

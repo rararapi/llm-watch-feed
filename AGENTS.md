@@ -48,8 +48,8 @@ scripts/collect.py
   - RSS_SOURCESからフィードを取得（feedparser + requests）
   - 新着記事をVertex AI（Gemini）で分析（is_model_related判定）。Vertex未設定/認証不可時はダミー要約を埋め込む
   - モデル関連記事のみ models.json に追記（出力先は環境変数 MODELS_JSON_PATH、既定 docs/data/models.json）
-  - URLのSHA-256ハッシュで重複排除
-  - 1回の実行で最大MAX_NEW_ARTICLES=10件を処理
+  - 追跡パラメータ等を除いたURLで重複排除。別媒体の同じ報道は見出し・要約・公開日を照合し、代表記事の other_reports に統合
+  - 1回の実行で最大MAX_NEW_ARTICLES=40件を処理
   - models.jsonは最大MAX_TOTAL_ARTICLES=500件に制限
 
 scripts/generate_images.py
@@ -314,8 +314,8 @@ RSS_SOURCES = [
 
 国内総合媒体（デジタル庁・＠IT 等）や企業技術ブログは非AI記事も混ざるため、`SYSTEM_PROMPT`
 のAIニュース判定（`is_model_related`）でフィルタする前提。要約アグリゲータ（MarkTechPost 等）や
-高ノイズの総合媒体（ASCII/CNET/GIGAZINE）、コミュニティ系（Zenn/Qiita/note）は、URLベースの
-重複排除しか無い現状では重複・ノイズが増えるため未採用。産総研(AIST)はRSSのフィードURLを
+高ノイズの総合媒体（ASCII/CNET/GIGAZINE）、コミュニティ系（Zenn/Qiita/note）は、
+収集対象を選ぶ際のノイズを考慮して未採用。産総研(AIST)はRSSのフィードURLを
 公式ページから確定できず（JSレンダリング）、確証が取れるまで未採用とした。
 
 新着は全ソースをまとめてからソース順に処理するのではなく、**ソースごとにラウンドロビン**で
@@ -335,7 +335,6 @@ RSS_SOURCES = [
 - **[優先] 命名の一般化**（`models.json` など旧名のリネーム検討）
 - AIニュース全般を扱うRSSソースの追加
 - 記事本文の全文取得と深い分析
-- 重複・類似記事のマージ
 - Slack Webhook通知
 - タグの自動正規化
 - 週次サマリーフィード

@@ -12,9 +12,11 @@ import os
 import shutil
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+from article_identity import unique_articles, url_to_id
 
 # 購読ページのフィード一覧は generate_feeds.py の FEED_CONFIGS を単一情報源にする
 from generate_feeds import FEED_CONFIGS
@@ -138,6 +140,14 @@ def _recency_group(published_at: str, now: datetime) -> str:
     return "earlier"
 
 
+def _is_http_url(url: str) -> bool:
+    try:
+        parts = urlsplit(url)
+        return parts.scheme in {"https", "http"} and bool(parts.hostname)
+    except ValueError:
+        return False
+
+
 def prepare(a: dict, now: datetime) -> dict:
     """テンプレートが使う派生フィールドを補う（元データは壊さない）。"""
     title = a.get("title") or "(無題)"
@@ -156,6 +166,10 @@ def prepare(a: dict, now: datetime) -> dict:
     a["_group"] = _recency_group(a.get("published_at", ""), now)
     a["_tags_attr"] = " ".join(str(t) for t in tags).lower()
     a["_share_text"] = quote(title)
+    a["_other_reports"] = [
+        report for report in (a.get("other_reports") or [])
+        if isinstance(report, dict) and isinstance(report.get("url"), str) and _is_http_url(report["url"])
+    ]
     # 一覧サムネ(_thumb): 取得元サイト(RSS)のサムネ image_url のみ。
     # 記事詳細の最初のサムネ(_hero): AI生成画像(image_generated_url) → image_url の順。
     # og:image(SNS共有) は外部スクレイパ互換を優先し従来どおり OG画像 or 既定画像のまま。
@@ -233,6 +247,23 @@ def render_article(env: Environment, a: dict, articles: list[dict]) -> bool:
         return False
 
 
+def render_report_redirects(env: Environment, article: dict, reserved_ids: set[str]) -> None:
+    """統合前に共有されたURLから、このニュースの代表記事へ案内する。"""
+    old_ids = set(article.get("previous_article_ids") or [])
+    old_ids.update(url_to_id(report["url"]) for report in article["_other_reports"])
+    if not old_ids:
+        return
+    try:
+        html = env.get_template("article_redirect.html").render(a=article)
+        for old_id in old_ids:
+            if old_id in reserved_ids:
+                continue
+            (PAGES_DIR / "articles" / f"{old_id}.html").write_text(html, encoding="utf-8")
+            reserved_ids.add(old_id)
+    except Exception as e:
+        logger.warning(f"Failed to generate article redirects for {article['id']}: {e}")
+
+
 def copy_assets() -> None:
     if not ASSETS_DIR.is_dir():
         logger.warning(f"{ASSETS_DIR} not found — skipping asset copy")
@@ -293,7 +324,7 @@ def main() -> None:
         articles: list[dict] = []
     else:
         with open(MODELS_JSON_PATH, encoding="utf-8") as f:
-            articles = json.load(f)
+            articles = unique_articles(json.load(f))
     logger.info(f"Loaded {len(articles)} articles")
 
     now = datetime.now(timezone.utc)
@@ -312,7 +343,12 @@ def main() -> None:
     render_index(env, visible)
     render_subscribe(env)
 
-    rendered = sum(render_article(env, a, visible) for a in visible)
+    reserved_ids = {a["id"] for a in visible}
+    rendered = 0
+    for a in visible:
+        if render_article(env, a, visible):
+            rendered += 1
+            render_report_redirects(env, a, reserved_ids)
     logger.info(
         f"Site generation complete: index + subscribe + {rendered}/{len(visible)} article pages -> {PAGES_DIR}"
     )

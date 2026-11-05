@@ -8,6 +8,8 @@ from email.utils import format_datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from article_identity import unique_articles
+
 try:  # ローカル実行時は .env を読み込む（本番はジョブの環境変数を使うため no-op）
     from dotenv import load_dotenv
 
@@ -103,7 +105,10 @@ def build_description(a: dict) -> str:
 
 def generate_feed(filename: str, config: dict, articles: list[dict]) -> None:
     items = sorted(
-        [a for a in articles if config["filter"](a)],
+        [
+            a for a in articles
+            if config["filter"](a) or any(config["filter"](r) for r in a.get("other_reports", []))
+        ],
         key=lambda a: a.get("published_at", ""),
         reverse=True,
     )[:MAX_ITEMS_PER_FEED]
@@ -149,7 +154,7 @@ def main() -> None:
         articles: list[dict] = []
     else:
         with open(MODELS_JSON_PATH, encoding="utf-8") as f:
-            articles = json.load(f)
+            articles = unique_articles(json.load(f))
     logger.info(f"Loaded {len(articles)} articles")
 
     for filename, config in FEED_CONFIGS.items():
