@@ -30,7 +30,7 @@ def _text(value: str) -> str:
 
 
 @lru_cache(maxsize=4096)
-def _timestamp(value: str) -> datetime | None:
+def parse_timestamp(value: str) -> datetime | None:
     try:
         stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
@@ -42,7 +42,7 @@ def _timestamp(value: str) -> datetime | None:
 
 
 def _date(article: dict) -> datetime | None:
-    return _timestamp(article.get("published_at") or "") or _timestamp(
+    return parse_timestamp(article.get("published_at") or "") or parse_timestamp(
         article.get("collected_at") or ""
     )
 

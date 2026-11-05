@@ -11,7 +11,7 @@ from xml.etree import ElementTree
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import collect
 import generate_feeds
-from article_identity import article_key
+from article_identity import article_key, unique_articles
 from story_dedup import group_stories
 
 
@@ -45,12 +45,56 @@ class StoryCollectionTests(unittest.TestCase):
         model = Mock()
         model.generate_content.side_effect = model_reply
         with patch("story_dedup.BATCH_SIZE", 1):
-            records = group_stories([dict(RELEASE), dict(REPORT), dict(FOLLOWUP)], model, set())
+            translated = dict(REPORT, published_at="Wed, 04 Nov 2026 19:00:00 +0900")
+            records = group_stories([dict(RELEASE), translated, dict(FOLLOWUP)], model, set())
         self.assertEqual([r["id"] for r in records], [RELEASE["id"], FOLLOWUP["id"]])
         self.assertEqual(records[0]["other_reports"][0]["url"], REPORT["url"])
+        self.assertEqual(records[0]["other_reports"][0]["published_at"], translated["published_at"])
         model.reset_mock()
         self.assertEqual(group_stories(records, model, {a["id"] for a in records}), records)
         model.generate_content.assert_not_called()
+
+    def test_distant_or_undated_parent_cannot_swallow_a_new_announcement(self):
+        model = Mock()
+        model.generate_content.return_value.text = '{"decisions":[{"n":1,"same_as":0}]}'
+        for date in ("2026-10-14T10:00:00Z", "2026-06-10T10:00:00Z", "not a date", ""):
+            with self.subTest(date=date):
+                initial = dict(RELEASE, published_at=date, story_checked=True,
+                               collected_at=FOLLOWUP["published_at"])
+                followup = dict(FOLLOWUP)
+                result = group_stories([initial, followup], model, {initial["id"]})
+                self.assertEqual([a["id"] for a in result], [initial["id"], followup["id"]])
+                self.assertTrue(followup["story_checked"])
+                self.assertNotIn("other_reports", initial)
+                same_url = dict(initial, published_at=followup["published_at"])
+                self.assertEqual(len(unique_articles([initial, same_url])), 1)
+
+    def test_undated_new_article_is_publishable_even_when_matcher_is_unavailable(self):
+        model = Mock()
+        model.generate_content.side_effect = RuntimeError("unavailable")
+        initial = dict(RELEASE, story_checked=True)
+        for date, estimated in (("", False), ("invalid", False), (initial["published_at"], True)):
+            with self.subTest(date=date, estimated=estimated):
+                report = dict(REPORT, published_at=date, published_at_estimated=estimated)
+                result = group_stories([initial, report], model, {initial["id"]})
+                self.assertEqual(len(result), 2)
+                self.assertTrue(report["story_checked"])
+        model.generate_content.assert_not_called()
+
+    def test_rss_without_publication_date_marks_display_timestamp_as_estimated(self):
+        rss = b"<rss version='2.0'><channel><item><link>https://news.example/no-date</link><title>Undated report</title></item></channel></rss>"
+        with tempfile.TemporaryDirectory() as tmp, ExitStack() as stack:
+            stack.enter_context(patch.object(collect, "MODELS_JSON_PATH", Path(tmp, "models.json")))
+            stack.enter_context(patch.object(collect, "RSS_SOURCES", [{"name": "News", "url": "https://news.example/rss"}]))
+            stack.enter_context(patch.object(collect, "build_model", return_value=None))
+            get = stack.enter_context(patch.object(collect.requests, "get"))
+            get.return_value.content = rss
+            stack.enter_context(patch.object(collect, "fetch_og_image", return_value=None))
+            collect.main()
+            record, = collect.load_existing()
+            self.assertTrue(record["published_at_estimated"])
+            self.assertEqual(record["published_at"], record["collected_at"])
+            self.assertTrue(record["story_checked"])
 
     def test_invalid_decisions_never_remove_an_article(self):
         model = Mock()

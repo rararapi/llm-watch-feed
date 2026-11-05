@@ -7,6 +7,9 @@ from urllib.parse import unquote_plus, urlsplit, urlunsplit
 
 _TRACKING_PARAMS = {"fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid"}
 _MIT_ARTICLE = re.compile(r"^/\d{4}/\d{2}/\d{2}/(\d+)(?:/[^/]+)?/?$")
+REPORT_FIELDS = (
+    "url", "source", "title", "published_at", "published_at_estimated", "importance", "model_type", "tags",
+)
 
 
 def url_to_id(url: str) -> str:
@@ -87,7 +90,7 @@ def unique_articles(articles: list[dict]) -> list[dict]:
                 key = article_key(report["url"])
                 if key != primary_key:
                     alias = reports_by_key.setdefault(key, {})
-                    for field in ("url", "source", "title", "importance", "model_type", "tags"):
+                    for field in REPORT_FIELDS:
                         if field in report:
                             alias.setdefault(field, report[field])
             if not kept.get("image_url") and other.get("image_url"):

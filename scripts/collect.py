@@ -344,7 +344,7 @@ def get_published_at(entry) -> str:
     raw = getattr(entry, "published", None)
     if raw:
         return raw
-    return datetime.now(timezone.utc).isoformat()
+    return ""
 
 
 def fetch_source(source: dict) -> list[dict]:
@@ -527,13 +527,14 @@ def main() -> None:
             logger.info(f"  -> Not model-related: {result.get('model_relevance_reason', '')}")
             continue
 
+        collected_at = datetime.now(timezone.utc).isoformat()
         record = {
             "id": url_to_id(article["url"]),
             "title": article["title"],
             "url": article["url"],
             "source": article["source"],
-            "published_at": article["published_at"],
-            "collected_at": datetime.now(timezone.utc).isoformat(),
+            "published_at": article["published_at"] or collected_at,
+            "collected_at": collected_at,
             "image_url": None,
             "is_model_related": True,
             "model_relevance_reason": result.get("model_relevance_reason", ""),
@@ -547,6 +548,8 @@ def main() -> None:
             "tags": result.get("tags") or [],
             "language": "ja",
         }
+        if not article["published_at"]:
+            record["published_at_estimated"] = True
         existing.append(record)
 
     matcher = None

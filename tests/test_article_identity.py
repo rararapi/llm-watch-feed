@@ -82,6 +82,7 @@ class ArticleIdentityTests(unittest.TestCase):
         second = {
             "id": "legacy", "url": "https://b.org/story", "source": "B",
             "title": "A second report", "importance": "A", "model_type": "Coding", "tags": ["API"],
+            "published_at": "2026-10-17T00:00:00Z",
         }
         tracking = dict(second, url=second["url"] + "?utm_source=rss")
         record, = unique_articles([first, second, tracking])
